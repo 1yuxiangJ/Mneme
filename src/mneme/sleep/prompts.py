@@ -1,0 +1,235 @@
+"""Sleep agent prompt templates (Letta sleep-time compute).
+
+Each prompt is a stage in the Sleep cycle. The cycle is orchestrated by
+sleep/agent.py:run_sleep_cycle as a LangGraph StateGraph; each node fills
+in the variables and calls the chat LLM with the rendered prompt.
+
+CRITICAL POLICY (encoded into every prompt):
+- The Sleep agent is the ONLY actor allowed to modify core_blocks.
+- Awake agent only writes archival; you (Sleep) promote / consolidate.
+- Be conservative — when in doubt, do nothing.
+- Always log reason for every change (returned in tool calls / final output).
+
+These prompts will need iteration once real LLM traffic flows. Day 03
+locks the structure; Day 05+ tunes the wording based on observed behavior.
+"""
+from __future__ import annotations
+
+# =====================================================================
+# Phase 0: PLAN
+# Determine which phases to run this cycle.
+# =====================================================================
+
+PLAN_PROMPT = """You are mneme's Sleep agent at the start of an idle-time consolidation cycle.
+
+Below is a summary of the current memory state. Decide which phases are worth
+running this cycle. Skip phases that have nothing to do.
+
+Memory state:
+{state_summary}
+
+Phases available:
+1. consolidate — merge near-duplicate archival facts (cosine > 0.85)
+2. promote    — lift high-confidence, frequently-used archival into core blocks
+3. demote     — soft-delete archival that's stale (last_used > 90d) and low-conf
+4. resolve    — detect & fix contradictions within core blocks
+5. reflect    — write a one-paragraph "about the user" snapshot to ops log
+
+Output strictly this JSON (no commentary):
+{{
+  "phases": ["consolidate", "promote", "reflect"],
+  "reason": "<one-line rationale per phase, semicolon-separated>"
+}}
+
+Constraints:
+- If archival_count < {min_archival}: skip everything except reflect.
+- If no archival created since last cycle: skip consolidate.
+- Always include reflect at the end of a productive cycle (it's cheap, gives
+  the human something to inspect).
+"""
+
+
+# =====================================================================
+# Phase 1: CONSOLIDATE
+# Merge near-duplicate archival facts.
+# =====================================================================
+
+CONSOLIDATE_PROMPT = """You are mneme's Sleep agent in the CONSOLIDATE phase.
+
+Below are clusters of archival facts that the embedding similarity flagged as
+near-duplicates (cosine distance < 0.15). Decide for each cluster:
+
+  - MERGE: pick the best wording, mark others as superseded.
+  - KEEP_ALL: clusters are not actually duplicates (different nuance).
+
+Clusters:
+{clusters_json}
+
+Output strictly this JSON:
+{{
+  "actions": [
+    {{
+      "cluster_index": 0,
+      "decision": "MERGE",
+      "kept_id": 42,
+      "discarded_ids": [37, 51],
+      "merged_content": "<final wording>",
+      "reason": "<why merged>"
+    }},
+    ...
+  ]
+}}
+
+Be conservative: if any cluster member has confidence=3 and others don't,
+PREFER keeping the high-confidence wording.
+"""
+
+
+# =====================================================================
+# Phase 2: PROMOTE
+# Lift archival → core_blocks.
+# =====================================================================
+
+PROMOTE_PROMPT = """You are mneme's Sleep agent in the PROMOTE phase.
+
+You are the ONLY actor allowed to modify core_blocks. Decide whether to lift
+each candidate archival fact into an appropriate core block.
+
+Current core blocks (do not duplicate existing content):
+{core_blocks_json}
+
+Candidate archival facts (high use_count + confidence):
+{candidates_json}
+
+The 5 core blocks: background, preferences, habits, skills, lessons_learned.
+
+For each candidate, output:
+
+{{
+  "actions": [
+    {{
+      "fact_id": 123,
+      "decision": "PROMOTE",
+      "target_block": "preferences",
+      "new_block_value": "<full block value; keep existing content plus this fact>",
+      "reason": "<why this belongs in core>"
+    }},
+    {{
+      "fact_id": 456,
+      "decision": "SKIP",
+      "reason": "<why not — duplicate of existing core / not generalizable / too specific>"
+    }},
+    ...
+  ]
+}}
+
+Rules:
+- new_block_value MUST be the COMPLETE new value, not a diff.
+- Keep block under char_limit (default 2000).
+- Prefer PROMOTE only if the fact is general and durable (not a one-off).
+- If unsure, SKIP.
+"""
+
+
+# =====================================================================
+# Phase 3: DEMOTE
+# Soft-delete stale low-confidence archival.
+# =====================================================================
+
+DEMOTE_PROMPT = """You are mneme's Sleep agent in the DEMOTE phase.
+
+Below are stale archival facts (last_used_at > 90 days ago) with low confidence.
+Decide whether each can be safely forgotten.
+
+Stale candidates:
+{stale_json}
+
+Output:
+{{
+  "actions": [
+    {{"fact_id": 12, "decision": "FORGET", "reason": "..."}},
+    {{"fact_id": 18, "decision": "KEEP", "reason": "may still be relevant"}}
+  ]
+}}
+
+Rules:
+- NEVER forget facts with confidence=3.
+- NEVER forget facts that contradict / clarify core blocks (those need resolve).
+- When in doubt, KEEP.
+"""
+
+
+# =====================================================================
+# Phase 4: RESOLVE
+# Detect and fix contradictions within core blocks.
+# =====================================================================
+
+RESOLVE_PROMPT = """You are mneme's Sleep agent in the RESOLVE phase.
+
+Below is the full current state of the 5 core blocks. Detect internal
+contradictions (between blocks, or within one block) and propose fixes.
+
+Core blocks:
+{core_blocks_json}
+
+Recent ops log (last 20 mutations, for context):
+{recent_ops_json}
+
+Output:
+{{
+  "contradictions": [
+    {{
+      "blocks_involved": ["preferences", "habits"],
+      "description": "...",
+      "fix_block": "preferences",
+      "new_block_value": "<entire updated block value>",
+      "reason": "..."
+    }}
+  ]
+}}
+
+If no contradictions are detected, output {{"contradictions": []}}.
+Be very conservative — only flag genuine logical conflicts, not stylistic differences.
+"""
+
+
+# =====================================================================
+# Phase 5: REFLECT
+# Write a one-paragraph "about the user" snapshot.
+# =====================================================================
+
+REFLECT_PROMPT = """You are mneme's Sleep agent in the REFLECT phase.
+
+Look at the complete user model and produce a one-paragraph "about the user"
+snapshot. The user (or developer) will read this in memory_ops_log to verify
+that the memory is accurate and useful.
+
+Core blocks:
+{core_blocks_json}
+
+A few recent archival highlights:
+{archival_highlights_json}
+
+Output a single string of 2-4 sentences. No JSON, no markdown. Just plain text.
+Tone: factual, concise, like a colleague summarizing their teammate.
+
+Example:
+"User is a Java backend intern at Thunderbit currently job-hunting for Java
+backend and AI agent roles. Prefers 4-space indent, named functions over
+inline lambdas, and writes tests first. Has hit issues with asyncio nested
+loops in past projects."
+"""
+
+
+# =====================================================================
+# Mapping for the StateGraph
+# =====================================================================
+
+PROMPTS = {
+    "plan": PLAN_PROMPT,
+    "consolidate": CONSOLIDATE_PROMPT,
+    "promote": PROMOTE_PROMPT,
+    "demote": DEMOTE_PROMPT,
+    "resolve": RESOLVE_PROMPT,
+    "reflect": REFLECT_PROMPT,
+}

@@ -1,0 +1,144 @@
+"""Tests for sleep.staging snapshot + atomic swap.
+
+Requires PG + pgvector + mneme_test database. Run with:
+
+    pytest --run-integration -m integration
+"""
+from __future__ import annotations
+
+import pytest
+from sqlalchemy import text
+
+from mneme.sleep.staging import atomic_swap, cleanup_staging, snapshot_to_staging
+from mneme.sleep.tools import find_consolidation_clusters
+
+pytestmark = pytest.mark.integration
+
+
+def _vector_literal(axis: int = 0) -> str:
+    vec = [0.0] * 1024
+    vec[axis] = 1.0
+    return "[" + ",".join(str(v) for v in vec) + "]"
+
+
+async def _insert_archival(session, content: str, axis: int = 0) -> int:
+    return int((await session.execute(text(
+        """
+        INSERT INTO archival_facts (content, tags, confidence, source, embedding)
+        VALUES (:content, ARRAY['test'], 3, 'test', CAST(:embedding AS vector))
+        RETURNING id
+        """
+    ), {"content": content, "embedding": _vector_literal(axis)})).scalar_one())
+
+
+async def _count_table(session, table: str) -> int:
+    return int((await session.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one())
+
+
+@pytest.mark.asyncio
+async def test_snapshot_creates_staging_tables(integration_session):
+    """After snapshot_to_staging, *_staging tables exist with same rows as main."""
+    await _insert_archival(integration_session, "Fact copied into staging.")
+    await integration_session.commit()
+
+    await snapshot_to_staging(integration_session)
+
+    core_staging_exists = (await integration_session.execute(
+        text("SELECT to_regclass('public.core_blocks_staging')")
+    )).scalar_one()
+    archival_staging_exists = (await integration_session.execute(
+        text("SELECT to_regclass('public.archival_facts_staging')")
+    )).scalar_one()
+
+    assert core_staging_exists == "core_blocks_staging"
+    assert archival_staging_exists == "archival_facts_staging"
+    assert await _count_table(integration_session, "core_blocks_staging") == 5
+    assert await _count_table(integration_session, "archival_facts_staging") == 1
+
+
+@pytest.mark.asyncio
+async def test_find_consolidation_clusters_uses_pgvector_distance(integration_session):
+    """Sleep consolidation can compare vector params inside raw SQL."""
+    first_id = await _insert_archival(
+        integration_session,
+        "User prefers concise technical answers.",
+        axis=0,
+    )
+    second_id = await _insert_archival(
+        integration_session,
+        "User likes direct engineering explanations.",
+        axis=0,
+    )
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    clusters = await find_consolidation_clusters(
+        integration_session,
+        distance_threshold=0.01,
+    )
+
+    assert len(clusters) == 1
+    assert {item["id"] for item in clusters[0]} == {first_id, second_id}
+
+
+@pytest.mark.asyncio
+async def test_atomic_swap_replaces_main(integration_session):
+    """After swap, queries against main return rows that were written to staging."""
+    snapshot_ts = await snapshot_to_staging(integration_session)
+    await integration_session.execute(text(
+        """
+        UPDATE core_blocks_staging
+        SET value = 'Sleep rewrote this block.',
+            version = version + 1,
+            last_writer = 'sleep_agent'
+        WHERE label = 'background'
+        """
+    ))
+    await integration_session.commit()
+
+    await atomic_swap(integration_session, snapshot_ts)
+
+    value = (await integration_session.execute(text(
+        "SELECT value FROM core_blocks WHERE label = 'background'"
+    ))).scalar_one()
+
+    assert value == "Sleep rewrote this block."
+    assert await _count_table(integration_session, "core_blocks_staging") == 0
+
+
+@pytest.mark.asyncio
+async def test_atomic_swap_merges_new_archival_during_cycle(integration_session):
+    """Archival rows inserted by Awake during the cycle (created_at > snapshot_ts)
+    are merged into the new main after swap."""
+    snapshot_ts = await snapshot_to_staging(integration_session)
+    inserted_id = await _insert_archival(
+        integration_session,
+        "Awake inserted this while Sleep was working.",
+    )
+    await integration_session.commit()
+
+    await atomic_swap(integration_session, snapshot_ts)
+
+    content = (await integration_session.execute(text(
+        "SELECT content FROM archival_facts WHERE id = :id"
+    ), {"id": inserted_id})).scalar_one_or_none()
+
+    assert content == "Awake inserted this while Sleep was working."
+
+
+@pytest.mark.asyncio
+async def test_cleanup_staging_drops_tables(integration_session):
+    """After cleanup, *_staging tables no longer exist."""
+    await snapshot_to_staging(integration_session)
+
+    await cleanup_staging(integration_session)
+
+    core_staging_exists = (await integration_session.execute(
+        text("SELECT to_regclass('public.core_blocks_staging')")
+    )).scalar_one()
+    archival_staging_exists = (await integration_session.execute(
+        text("SELECT to_regclass('public.archival_facts_staging')")
+    )).scalar_one()
+
+    assert core_staging_exists is None
+    assert archival_staging_exists is None

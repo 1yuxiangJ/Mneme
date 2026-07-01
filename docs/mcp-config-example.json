@@ -1,0 +1,20 @@
+{
+  "_note": "Reference MCP config for Claude Code to consume mneme.",
+  "_location": "Project-scoped config lives at <project-root>/.mcp.json. Local/user scope is managed in ~/.claude.json by `claude mcp add`.",
+  "_status": "Verified against Claude Code MCP docs: JSON uses `type: http`; `streamable-http` is accepted as an alias.",
+  "_cli": "claude mcp add --transport http mneme --scope project http://127.0.0.1:8000/mcp",
+
+  "mcpServers": {
+    "mneme": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp",
+      "description": "User model memory service: cross-project user profile, preferences, habits, lessons. Read-only primary (Awake) + autonomous Sleep agent for consolidation.",
+      "tools": {
+        "remember": "Record a fact about the user (preferences/habits/cross-project lessons). NEVER call for project-specific facts.",
+        "recall":   "Semantic search over user memory.",
+        "list_memory": "Get an overview of core blocks + archival count.",
+        "forget":   "Mark a fact as deleted (soft delete + audit log)."
+      }
+    }
+  }
+}
