@@ -374,7 +374,7 @@ async def log_reflection(session: AsyncSession, text_value: str) -> None:
 # =====================================================================
 
 
-def _row_to_dict(r) -> dict[str, Any]:
+def _row_to_dict(r: Any) -> dict[str, Any]:
     return {
         "id": r.id,
         "content": r.content,

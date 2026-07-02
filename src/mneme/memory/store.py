@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Literal
 
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from mneme.db.models import (
     ArchivalFact,
@@ -284,6 +284,6 @@ async def write_core_block(
 # -------------------------------------------------------------
 
 
-def session_factory():
+def session_factory() -> async_sessionmaker[AsyncSession]:
     """Return the singleton async session factory."""
     return get_sessionmaker()

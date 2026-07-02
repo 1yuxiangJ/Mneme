@@ -25,7 +25,7 @@ import json
 import logging
 import time
 from datetime import UTC, datetime
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -46,10 +46,10 @@ class SleepState(TypedDict, total=False):
     snapshot_ts: datetime
     deadline_ts: float
     plan: list[str]
-    consolidate_actions: list
-    promote_actions: list
-    demote_actions: list
-    contradictions: list
+    consolidate_actions: list[Any]
+    promote_actions: list[Any]
+    demote_actions: list[Any]
+    contradictions: list[Any]
     reflection_text: str
     aborted: bool
     abort_reason: str | None
@@ -60,15 +60,21 @@ class SleepState(TypedDict, total=False):
 # ---------------------------------------------------------------
 
 
-async def _llm_json(prompt: str) -> dict:
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    return json.dumps(content, ensure_ascii=False, default=str)
+
+
+async def _llm_json(prompt: str) -> dict[str, Any]:
     """Call chat LLM and parse JSON response (tolerant of code fences)."""
     llm = get_chat_llm(temperature=0.0)
     resp = await llm.ainvoke([HumanMessage(content=prompt)])
-    raw = resp.content if hasattr(resp, "content") else str(resp)
+    raw = _content_to_text(resp.content if hasattr(resp, "content") else resp)
     return _safe_parse_json(raw)
 
 
-def _safe_parse_json(raw: str) -> dict:
+def _safe_parse_json(raw: str) -> dict[str, Any]:
     raw = raw.strip()
     if raw.startswith("```"):
         raw = raw.strip("`")
@@ -78,7 +84,10 @@ def _safe_parse_json(raw: str) -> dict:
         if raw.endswith("```"):
             raw = raw[:-3].strip()
     try:
-        return json.loads(raw)
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return cast(dict[str, Any], parsed)
+        return {"_raw": parsed}
     except json.JSONDecodeError as exc:
         logger.warning("LLM JSON parse failed; raw[:500]=%r", raw[:500])
         return {"_parse_error": str(exc), "_raw": raw[:1000]}
@@ -259,7 +268,9 @@ async def node_reflect(state: SleepState) -> SleepState:
         )
         llm = get_chat_llm(temperature=0.3)
         resp = await llm.ainvoke([HumanMessage(content=rendered)])
-        reflection_text = resp.content if hasattr(resp, "content") else str(resp)
+        reflection_text = _content_to_text(
+            resp.content if hasattr(resp, "content") else resp
+        )
         await tools.log_reflection(session, reflection_text)
     logger.info("reflect: snapshot logged")
     return {**state, "reflection_text": reflection_text}
@@ -288,7 +299,7 @@ async def node_swap(state: SleepState) -> SleepState:
 # ---------------------------------------------------------------
 
 
-def build_sleep_graph():
+def build_sleep_graph() -> Any:
     g = StateGraph(SleepState)
     g.add_node("snapshot", node_snapshot)
     g.add_node("plan", node_plan)
@@ -314,7 +325,7 @@ def build_sleep_graph():
 _graph: Any = None
 
 
-def get_sleep_graph():
+def get_sleep_graph() -> Any:
     global _graph
     if _graph is None:
         _graph = build_sleep_graph()

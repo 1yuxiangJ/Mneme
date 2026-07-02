@@ -10,6 +10,8 @@ its system prompt policy.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from mcp.server.fastmcp import FastMCP
 
 from mneme.awake.agent import run_awake as _run_awake
@@ -17,7 +19,7 @@ from mneme.config import settings
 from mneme.sleep.scheduler import mark_awake_activity
 
 
-async def run_awake(command: str):
+async def run_awake(command: str) -> dict[str, Any]:
     """Wrap Awake invocation to mark activity for the Sleep idle scheduler.
 
     Every MCP tool entry goes through this so idle detection works correctly.
@@ -37,7 +39,7 @@ async def remember(
     content: str,
     tags: list[str] | None = None,
     confidence: int = 2,
-) -> dict:
+) -> dict[str, Any]:
     """Store a fact about the user.
 
     ONLY call for cross-project user-level facts (preferences, habits, lessons,
@@ -61,7 +63,7 @@ async def remember(
 
 
 @mcp.tool()
-async def recall(query: str, limit: int = 5) -> dict:
+async def recall(query: str, limit: int = 5) -> dict[str, Any]:
     """Semantic search over the user's memory.
 
     Returns matching archival facts + core block context.
@@ -80,7 +82,7 @@ async def recall(query: str, limit: int = 5) -> dict:
 
 
 @mcp.tool()
-async def list_memory() -> dict:
+async def list_memory() -> dict[str, Any]:
     """Overview of who the user is (all core blocks + archival total).
 
     Recommended at the start of a new conversation.
@@ -92,7 +94,7 @@ async def list_memory() -> dict:
 
 
 @mcp.tool()
-async def forget(fact_id: int, reason: str) -> dict:
+async def forget(fact_id: int, reason: str) -> dict[str, Any]:
     """Soft-delete a fact discovered to be wrong/outdated.
 
     Args:

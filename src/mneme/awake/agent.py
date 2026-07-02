@@ -55,7 +55,7 @@ Be concise. Always return a structured summary of what you did.
 _agent: Any = None
 
 
-def get_awake_agent():
+def get_awake_agent() -> Any:
     """Lazy singleton — build the LangGraph ReAct agent once."""
     global _agent
     if _agent is None:

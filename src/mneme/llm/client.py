@@ -10,6 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from pydantic import SecretStr
 
 from mneme.config import settings
 
@@ -23,7 +24,7 @@ def get_chat_llm(temperature: float = 0.0) -> ChatOpenAI:
     return ChatOpenAI(
         model=settings.deepseek_model,
         base_url=settings.deepseek_base_url,
-        api_key=settings.deepseek_api_key,
+        api_key=SecretStr(settings.deepseek_api_key),
         temperature=temperature,
     )
 
@@ -37,7 +38,7 @@ def get_embedder() -> OpenAIEmbeddings:
     """
     return OpenAIEmbeddings(
         model=settings.embed_model,
-        api_key=settings.embed_api_key,
+        api_key=SecretStr(settings.embed_api_key),
         base_url=settings.embed_base_url,
         dimensions=settings.embed_dimensions,
         check_embedding_ctx_length=False,

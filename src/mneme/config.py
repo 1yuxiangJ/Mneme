@@ -46,4 +46,5 @@ class Settings(BaseSettings):
 
 
 # Singleton — import this everywhere instead of re-instantiating.
-settings = Settings()
+# pydantic-settings fills required fields from environment at runtime.
+settings = Settings()  # type: ignore[call-arg]

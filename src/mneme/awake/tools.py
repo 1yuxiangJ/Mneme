@@ -17,6 +17,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 from mneme.memory.store import (
+    Actor,
     get_memory_overview,
     insert_archival,
     list_core_blocks,
@@ -26,7 +27,7 @@ from mneme.memory.store import (
     soft_delete_archival,
 )
 
-AWAKE_ACTOR = "awake_agent"
+AWAKE_ACTOR: Actor = "awake_agent"
 
 
 @tool

@@ -1,6 +1,32 @@
 # Local Setup Status
 
-> Updated on 2026-07-01 by Codex.
+> Updated on 2026-07-02 by Codex.
+
+## 2026-07-02 Update
+
+Current quality gate:
+
+```bash
+/Users/mac/.local/bin/uv run ruff check
+/Users/mac/.local/bin/uv run mypy src
+/Users/mac/.local/bin/uv run pytest --run-integration
+```
+
+Observed result:
+
+```text
+ruff: All checks passed
+mypy: Success, no issues found in 22 source files
+pytest: 18 passed, 1 warning
+```
+
+Real MCP + Sleep smoke has also been verified:
+
+```bash
+scripts/claude-mneme.sh mcp list
+/Users/mac/.local/bin/uv run python scripts/run_sleep_once.py
+/Users/mac/.local/bin/uv run python scripts/inspect_memory.py --limit 10
+```
 
 ## 2026-07-01 Update
 
@@ -13,12 +39,7 @@ Core local verification now passes:
 /Users/mac/.local/bin/uv run python -c "from mneme.awake.agent import get_awake_agent; get_awake_agent(); from mneme.sleep.agent import get_sleep_graph; get_sleep_graph(); print('agents ok')"
 ```
 
-Remaining gap:
-
-```text
-mypy strict mode still has historical annotation debt.
-Real LLM e2e still requires DEEPSEEK_API_KEY and EMBED_API_KEY.
-```
+Previous mypy strict annotation debt has been fixed.
 
 > Updated on 2026-06-18 by Codex.
 

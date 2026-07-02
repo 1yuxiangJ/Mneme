@@ -89,7 +89,7 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 
 ## 当前状态
 
-🟢 **Day 06(2026-07-02):真实 MCP + 手动 Sleep 闭环跑通**
+🟢 **Day 07(2026-07-02):类型债清零,质量门通过**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -98,7 +98,8 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 - ✅ Day 04:简历/面试/demo 文档 + 代码自检
 - ✅ Day 05:PostgreSQL/pgvector/uv 环境跑通,补实 memory + staging 集成测试
 - ✅ Day 06:真实 MCP `forget` 验证,新增手动 Sleep 触发和 memory inspect 脚本
-- ⏸️ Day 07+:mypy 类型债 + dogfood + prompt 调优 + 录 demo
+- ✅ Day 07:`uv run mypy src` 从 41 个错误降到 0
+- ⏸️ Day 08+:dogfood + prompt 调优 + 录 demo
 
 完整施工记录在 `docs/construction-log/`。
 

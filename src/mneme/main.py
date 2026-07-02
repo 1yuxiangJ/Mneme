@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import AsyncIterator
 
 from starlette.applications import Starlette
+from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
@@ -27,12 +29,12 @@ logging.basicConfig(
 logger = logging.getLogger("mneme")
 
 
-async def health(_request):
+async def health(_request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "mneme"})
 
 
 @contextlib.asynccontextmanager
-async def lifespan(_app: Starlette):
+async def lifespan(_app: Starlette) -> AsyncIterator[None]:
     """Startup + shutdown hooks."""
     logger.info("mneme startup; mcp at %s", settings.mcp_server_path)
     from mneme.sleep.scheduler import start_sleep_scheduler
