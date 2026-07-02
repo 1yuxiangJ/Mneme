@@ -15,7 +15,11 @@ from typing import Any, TypedDict
 from sqlalchemy import select
 
 from mneme.db.models import ArchivalFact
-from mneme.memory.store import insert_archival, session_factory
+from mneme.memory.store import (
+    insert_archival,
+    session_factory,
+    soft_delete_archival,
+)
 
 
 class DemoFact(TypedDict):
@@ -103,7 +107,11 @@ async def seed_demo_memory() -> dict[str, Any]:
     async with session_maker() as session:
         existing_contents = set(
             (
-                await session.execute(select(ArchivalFact.content))
+                await session.execute(
+                    select(ArchivalFact.content).where(
+                        ArchivalFact.is_deleted.is_(False)
+                    )
+                )
             ).scalars()
         )
 
@@ -125,24 +133,65 @@ async def seed_demo_memory() -> dict[str, Any]:
 
     return {
         "status": "ok",
+        "mode": "seed",
         "inserted_count": len(inserted),
         "inserted_ids": inserted,
         "skipped_existing_count": len(skipped),
     }
 
 
+async def cleanup_demo_memory() -> dict[str, Any]:
+    """Soft-delete active demo-seeded facts."""
+    session_maker = session_factory()
+    async with session_maker() as session:
+        rows = (
+            await session.execute(
+                select(ArchivalFact.id)
+                .where(ArchivalFact.source == "demo-seed")
+                .where(ArchivalFact.is_deleted.is_(False))
+                .order_by(ArchivalFact.id)
+            )
+        ).scalars()
+        fact_ids = list(rows)
+
+    deleted: list[int] = []
+    for fact_id in fact_ids:
+        async with session_maker() as session:
+            await soft_delete_archival(
+                session,
+                fact_id,
+                reason="Cleanup demo-seeded Mneme memory.",
+                actor="awake_agent",
+            )
+            deleted.append(fact_id)
+
+    return {
+        "status": "ok",
+        "mode": "cleanup",
+        "deleted_count": len(deleted),
+        "deleted_ids": deleted,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Seed demo-tagged Mneme memories.")
     parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Soft-delete active demo-seeded facts instead of inserting them.",
+    )
+    parser.add_argument(
         "--yes",
         action="store_true",
-        help="Confirm that demo facts should be inserted into the local database.",
+        help="Confirm that demo facts should be inserted or cleaned up.",
     )
     args = parser.parse_args()
     if not args.yes:
-        print("Refusing to seed demo memory without --yes.")
+        print("Refusing to mutate demo memory without --yes.")
         return 2
 
-    result = asyncio.run(seed_demo_memory())
+    result = asyncio.run(
+        cleanup_demo_memory() if args.cleanup else seed_demo_memory()
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0

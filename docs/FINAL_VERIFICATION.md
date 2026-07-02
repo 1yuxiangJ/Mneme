@@ -42,6 +42,12 @@ mneme: http://127.0.0.1:8000/mcp (HTTP) - ✔ Connected
 /Users/mac/.local/bin/uv run python scripts/seed_demo_memory.py --yes
 ```
 
+也可以用一条命令完成 seed + Sleep + inspect:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/run_demo_cycle.py --seed --yes
+```
+
 查看当前状态:
 
 ```bash
@@ -73,6 +79,12 @@ plan 至少包含 reflect;数据足够时应出现 promote / consolidate
 recent_ops 里有 sleep_reflect
 如果触发 promote,core_blocks version 会增加,recent_ops 有 sleep_promote
 如果触发 consolidate,recent_ops 有 sleep_consolidate
+```
+
+清理 demo seed 数据:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/seed_demo_memory.py --cleanup --yes
 ```
 
 ## 5. Quality Gate

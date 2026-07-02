@@ -166,6 +166,18 @@ mcp__mneme__forget
 `seed_demo_memory.py` 默认不会写库,必须带 `--yes`。这些 fact 会带
 `demo-seed` tag,方便后续识别。
 
+也可以用一条命令完成 seed + Sleep + inspect:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/run_demo_cycle.py --seed --yes
+```
+
+清理 demo seed 数据:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/seed_demo_memory.py --cleanup --yes
+```
+
 ### 查看当前 memory / ops_log 快照
 
 ```bash

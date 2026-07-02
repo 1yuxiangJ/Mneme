@@ -2,7 +2,7 @@
 
 > **Letta-inspired memory-as-a-service for Claude Code.** Awake/Sleep 双 agent + read-only primary,严格按 Letta sleep-time compute paper(arxiv 2504.13171)落地。
 
-[![python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/) [![status](https://img.shields.io/badge/status-MVP%20scaffold%20complete-yellow)](docs/construction-log/) [![license](https://img.shields.io/badge/license-MIT%20(planned)-lightgrey)]()
+[![python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org/) [![status](https://img.shields.io/badge/status-E2E%20demo%20ready-green)](docs/construction-log/) [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
 
 > **Mneme** 读作 "NEE-mee" / "尼米",来自记忆女神 Mneme。历史代号为 `dream`。
 
@@ -89,7 +89,7 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 
 ## 当前状态
 
-🟢 **Day 07(2026-07-02):类型债清零,质量门通过**
+🟢 **Day 08(2026-07-02):Demo lifecycle tooling 完成**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -99,7 +99,8 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 - ✅ Day 05:PostgreSQL/pgvector/uv 环境跑通,补实 memory + staging 集成测试
 - ✅ Day 06:真实 MCP `forget` 验证,新增手动 Sleep 触发和 memory inspect 脚本
 - ✅ Day 07:`uv run mypy src` 从 41 个错误降到 0
-- ⏸️ Day 08+:dogfood + prompt 调优 + 录 demo
+- ✅ Day 08:demo seed / one-shot demo cycle / demo cleanup / final verification checklist
+- ⏸️ 剩余人工项:按 `docs/FINAL_VERIFICATION.md` 录 demo
 
 完整施工记录在 `docs/construction-log/`。
 
@@ -114,6 +115,7 @@ mneme/
 ├── .env.example                 # 占位符配置
 ├── scripts/setup.sh             # 回家一键装环境(幂等)
 ├── scripts/seed_demo_memory.py   # 显式 --yes 后写入 demo-tagged memory
+├── scripts/run_demo_cycle.py      # seed 可选 + Sleep + inspect 的一键 demo
 ├── scripts/run_sleep_once.py     # 手动触发一次 Sleep cycle
 ├── scripts/inspect_memory.py     # 只读打印 memory / ops_log 快照
 ├── src/mneme/                   # 2103 行 Python · 17 模块
@@ -195,4 +197,4 @@ pytest + pytest-asyncio                # 测试
 
 ## License
 
-MIT(planned)— Day 06+ open source 时正式签。
+MIT. See [LICENSE](LICENSE).

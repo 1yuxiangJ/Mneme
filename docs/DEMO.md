@@ -9,6 +9,7 @@
 - [ ] mneme service 跑起来(`uv run python -m mneme`)
 - [ ] Claude Code MCP 配置好,可看到 `mcp__mneme__remember` 等 4 个 tool
 - [ ] 已经跟 Claude Code 聊过一段时间,积累真实 memory;如果不足,执行 `uv run python scripts/seed_demo_memory.py --yes`
+- [ ] 想省步骤时直接执行 `uv run python scripts/run_demo_cycle.py --seed --yes`
 - [ ] 终端 1:`tail -f logs/mneme.log`(看实时 trace)
 - [ ] 终端 2:`uv run python scripts/inspect_memory.py --limit 10`(查 memory / ops_log 用)
 - [ ] OBS / QuickTime 录屏 + 鼠标光标高亮 + 字号调大
@@ -90,6 +91,9 @@ Claude Code 回:
 uv run python scripts/run_sleep_once.py
 # 如果事实数量不足,用于 demo 时可以降低本轮门槛:
 uv run python scripts/run_sleep_once.py --min-archival-count 0
+
+# 或者一条命令完成 seed + Sleep + inspect:
+uv run python scripts/run_demo_cycle.py --seed --yes
 
 # 输出:
 # {"status": "ok", "plan": ["consolidate", "promote", "reflect"],
