@@ -33,6 +33,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Tables that participate in staging.
 _STAGED_TABLES = ("core_blocks", "archival_facts")
+_ARCHIVAL_ID_SEQUENCE = "archival_facts_id_seq"
+
+
+async def _set_archival_id_default(session: AsyncSession, table_name: str) -> None:
+    await session.execute(text(
+        f"""
+        ALTER TABLE {table_name}
+        ALTER COLUMN id SET DEFAULT nextval('{_ARCHIVAL_ID_SEQUENCE}'::regclass)
+        """
+    ))
+
+
+async def _ensure_archival_id_sequence(session: AsyncSession) -> None:
+    """Ensure archival_facts.id has a stable sequence across table swaps.
+
+    `CREATE TABLE ... LIKE ... INCLUDING ALL` plus rename-based swaps can leave
+    the live table without the original BIGSERIAL default in older local DBs.
+    Sleep must repair that before creating staging, otherwise snapshot fails
+    before any ops_log entry can be written.
+    """
+    await session.execute(text(
+        f"CREATE SEQUENCE IF NOT EXISTS {_ARCHIVAL_ID_SEQUENCE}"
+    ))
+    await session.execute(text(
+        f"""
+        SELECT setval(
+            '{_ARCHIVAL_ID_SEQUENCE}',
+            GREATEST((SELECT COALESCE(MAX(id), 0) FROM archival_facts), 1),
+            true
+        )
+        """
+    ))
+    await _set_archival_id_default(session, "archival_facts")
 
 
 async def snapshot_to_staging(session: AsyncSession) -> datetime:
@@ -44,6 +77,8 @@ async def snapshot_to_staging(session: AsyncSession) -> datetime:
     """
     snapshot_ts = datetime.now(UTC)
 
+    await _ensure_archival_id_sequence(session)
+
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
         await session.execute(text(f"DROP TABLE IF EXISTS {staging} CASCADE"))
@@ -51,12 +86,7 @@ async def snapshot_to_staging(session: AsyncSession) -> datetime:
             text(f"CREATE TABLE {staging} (LIKE {tbl} INCLUDING ALL)")
         )
         if tbl == "archival_facts":
-            await session.execute(text(
-                """
-                ALTER TABLE archival_facts_staging
-                ALTER COLUMN id SET DEFAULT nextval('archival_facts_id_seq'::regclass)
-                """
-            ))
+            await _set_archival_id_default(session, "archival_facts_staging")
         await session.execute(
             text(f"INSERT INTO {staging} SELECT * FROM {tbl}")
         )

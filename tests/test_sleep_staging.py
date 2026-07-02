@@ -127,6 +127,35 @@ async def test_atomic_swap_merges_new_archival_during_cycle(integration_session)
 
 
 @pytest.mark.asyncio
+async def test_snapshot_repairs_missing_archival_id_sequence(integration_session):
+    """Sleep should recover if a previous swap left archival id default missing."""
+    await integration_session.execute(text(
+        "ALTER TABLE archival_facts ALTER COLUMN id DROP DEFAULT"
+    ))
+    await integration_session.execute(text(
+        "DROP SEQUENCE IF EXISTS archival_facts_id_seq CASCADE"
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO archival_facts (id, content, tags, confidence, source, embedding)
+        VALUES (42, 'Existing fact with explicit id.', ARRAY['test'], 3, 'test',
+                CAST(:embedding AS vector))
+        """
+    ), {"embedding": _vector_literal()})
+    await integration_session.commit()
+
+    snapshot_ts = await snapshot_to_staging(integration_session)
+    await atomic_swap(integration_session, snapshot_ts)
+
+    new_id = await _insert_archival(
+        integration_session,
+        "Insert after repaired swap should get generated id.",
+    )
+
+    assert new_id > 42
+
+
+@pytest.mark.asyncio
 async def test_cleanup_staging_drops_tables(integration_session):
     """After cleanup, *_staging tables no longer exist."""
     await snapshot_to_staging(integration_session)
