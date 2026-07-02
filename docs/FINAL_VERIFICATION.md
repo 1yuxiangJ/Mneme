@@ -42,6 +42,14 @@ mneme: http://127.0.0.1:8000/mcp (HTTP) - ✔ Connected
 /Users/mac/.local/bin/uv run python scripts/seed_demo_memory.py --yes
 ```
 
+说明:
+
+```text
+demo facts 会带 demo-seed tag。
+高置信 demo facts 会被设置为 promotion-ready use_count。
+如果之前已经 seed 过,再次执行会刷新已有 demo facts 的 usage 信号。
+```
+
 也可以用一条命令完成 seed + Sleep + inspect:
 
 ```bash

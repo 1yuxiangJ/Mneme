@@ -89,7 +89,7 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 
 ## 当前状态
 
-🟢 **Day 08(2026-07-02):Demo lifecycle tooling 完成**
+🟢 **Day 09(2026-07-02):Demo promote readiness 调优完成**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -100,6 +100,7 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 - ✅ Day 06:真实 MCP `forget` 验证,新增手动 Sleep 触发和 memory inspect 脚本
 - ✅ Day 07:`uv run mypy src` 从 41 个错误降到 0
 - ✅ Day 08:demo seed / one-shot demo cycle / demo cleanup / final verification checklist
+- ✅ Day 09:demo seed facts 增加 promotion-ready usage signal,确保 Sleep promote 有候选
 - ⏸️ 剩余人工项:按 `docs/FINAL_VERIFICATION.md` 录 demo
 
 完整施工记录在 `docs/construction-log/`。

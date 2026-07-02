@@ -164,7 +164,9 @@ mcp__mneme__forget
 ```
 
 `seed_demo_memory.py` 默认不会写库,必须带 `--yes`。这些 fact 会带
-`demo-seed` tag,方便后续识别。
+`demo-seed` tag,方便后续识别。高置信 demo facts 会带 promotion-ready
+`use_count`,用于触发 Sleep promote;如果 demo facts 已存在,seed 命令会刷新这些
+usage 信号。
 
 也可以用一条命令完成 seed + Sleep + inspect:
 

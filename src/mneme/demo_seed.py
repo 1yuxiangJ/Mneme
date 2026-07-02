@@ -10,9 +10,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from datetime import UTC, datetime
 from typing import Any, TypedDict
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from mneme.db.models import ArchivalFact
 from mneme.memory.store import (
@@ -26,6 +27,7 @@ class DemoFact(TypedDict):
     content: str
     tags: list[str]
     confidence: int
+    use_count: int
 
 
 DEMO_FACTS: list[DemoFact] = [
@@ -36,46 +38,55 @@ DEMO_FACTS: list[DemoFact] = [
         ),
         "tags": ["demo-seed", "career", "backend"],
         "confidence": 3,
+        "use_count": 6,
     },
     {
         "content": "User is building Mneme as an agent infrastructure resume project.",
         "tags": ["demo-seed", "project", "agent"],
         "confidence": 3,
+        "use_count": 6,
     },
     {
         "content": "User prefers direct, concrete, engineering-oriented Chinese explanations.",
         "tags": ["demo-seed", "communication", "preference"],
         "confidence": 3,
+        "use_count": 7,
     },
     {
         "content": "User dislikes vague questions and empty high-level phrasing.",
         "tags": ["demo-seed", "communication", "preference"],
         "confidence": 3,
+        "use_count": 6,
     },
     {
         "content": "User wants agent projects to show real engineering value, not feel like toys.",
         "tags": ["demo-seed", "product", "preference"],
         "confidence": 3,
+        "use_count": 6,
     },
     {
         "content": "User is interested in long-term memory agents inspired by Letta.",
         "tags": ["demo-seed", "agent", "memory"],
         "confidence": 3,
+        "use_count": 5,
     },
     {
         "content": "User named the project Mneme after considering memory-related names.",
         "tags": ["demo-seed", "project", "naming"],
         "confidence": 2,
+        "use_count": 2,
     },
     {
         "content": "User prefers Java backend framing when explaining engineering trade-offs.",
         "tags": ["demo-seed", "backend", "communication"],
         "confidence": 2,
+        "use_count": 3,
     },
     {
         "content": "User wants GitHub commits pushed periodically during project construction.",
         "tags": ["demo-seed", "workflow", "github"],
         "confidence": 2,
+        "use_count": 3,
     },
     {
         "content": (
@@ -84,18 +95,35 @@ DEMO_FACTS: list[DemoFact] = [
         ),
         "tags": ["demo-seed", "workflow", "preference"],
         "confidence": 3,
+        "use_count": 6,
     },
     {
         "content": "User uses DataGrip to inspect the local PostgreSQL database.",
         "tags": ["demo-seed", "tooling", "database"],
         "confidence": 2,
+        "use_count": 2,
     },
     {
         "content": "User's local Mneme project lives at /Users/mac/dream.",
         "tags": ["demo-seed", "environment", "mneme"],
         "confidence": 3,
+        "use_count": 5,
     },
 ]
+
+
+async def _apply_demo_signals(fact_id: int, use_count: int) -> None:
+    session_maker = session_factory()
+    async with session_maker() as session:
+        await session.execute(
+            update(ArchivalFact)
+            .where(ArchivalFact.id == fact_id)
+            .values(
+                use_count=use_count,
+                last_used_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
 
 
 async def seed_demo_memory() -> dict[str, Any]:
@@ -103,20 +131,23 @@ async def seed_demo_memory() -> dict[str, Any]:
     session_maker = session_factory()
     inserted: list[int] = []
     skipped: list[str] = []
+    refreshed: list[int] = []
 
     async with session_maker() as session:
-        existing_contents = set(
-            (
-                await session.execute(
-                    select(ArchivalFact.content).where(
-                        ArchivalFact.is_deleted.is_(False)
-                    )
-                )
-            ).scalars()
-        )
+        existing_rows = (
+            await session.execute(
+                select(ArchivalFact.id, ArchivalFact.content, ArchivalFact.source)
+                .where(ArchivalFact.is_deleted.is_(False))
+            )
+        ).all()
+        existing_by_content = {row.content: row for row in existing_rows}
 
     for fact in DEMO_FACTS:
-        if fact["content"] in existing_contents:
+        existing = existing_by_content.get(fact["content"])
+        if existing is not None:
+            if existing.source == "demo-seed":
+                await _apply_demo_signals(existing.id, fact["use_count"])
+                refreshed.append(existing.id)
             skipped.append(fact["content"])
             continue
         async with session_maker() as session:
@@ -129,6 +160,7 @@ async def seed_demo_memory() -> dict[str, Any]:
                 actor="awake_agent",
                 reason="Seeded demo memory for Sleep promote/consolidate rehearsal.",
             )
+            await _apply_demo_signals(fact_id, fact["use_count"])
             inserted.append(fact_id)
 
     return {
@@ -136,6 +168,8 @@ async def seed_demo_memory() -> dict[str, Any]:
         "mode": "seed",
         "inserted_count": len(inserted),
         "inserted_ids": inserted,
+        "refreshed_existing_count": len(refreshed),
+        "refreshed_existing_ids": refreshed,
         "skipped_existing_count": len(skipped),
     }
 
