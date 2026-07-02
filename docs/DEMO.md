@@ -8,9 +8,9 @@
 
 - [ ] mneme service 跑起来(`uv run python -m mneme`)
 - [ ] Claude Code MCP 配置好,可看到 `mcp__mneme__remember` 等 4 个 tool
-- [ ] **已经跟 Claude Code 聊过 2-3 天积累真实 memory**(关键!不要假数据)
+- [ ] 已经跟 Claude Code 聊过一段时间,积累真实 memory(优先真实数据;不足时只展示 reflect)
 - [ ] 终端 1:`tail -f logs/mneme.log`(看实时 trace)
-- [ ] 终端 2:连 PG `psql mneme`(查 memory_ops_log 用)
+- [ ] 终端 2:`uv run python scripts/inspect_memory.py --limit 10`(查 memory / ops_log 用)
 - [ ] OBS / QuickTime 录屏 + 鼠标光标高亮 + 字号调大
 
 ---
@@ -52,9 +52,8 @@ Claude Code(trace):
   ← {"status": "ok", "fact_id": 142, ...}
 
 你(终端 2):
-  psql mneme -c "SELECT id, content, tags, confidence, created_at
-                 FROM archival_facts ORDER BY created_at DESC LIMIT 1;"
-  → 142 | prefers Ruff over Black... | {preference,tooling} | 3 | 2026-06-XX
+  uv run python scripts/inspect_memory.py --limit 5
+  → archival_facts 里出现最新 fact, recent_ops 里出现 remember 审计记录
 ```
 
 **亮点**:LLM 自己判断"该 remember",写入 archival。这是 LLM-driven memory writes,不是 backend CRUD。
@@ -88,11 +87,7 @@ Claude Code 回:
 
 ```bash
 # 强制触发(不等 30 min idle)
-uv run python -c "
-import asyncio
-from mneme.sleep.agent import run_sleep_cycle
-print(asyncio.run(run_sleep_cycle()))
-"
+uv run python scripts/run_sleep_once.py
 
 # 输出:
 # {"status": "ok", "plan": ["consolidate", "promote", "reflect"],
@@ -101,30 +96,22 @@ print(asyncio.run(run_sleep_cycle()))
 
 ```bash
 # 看 Sleep 干了啥
-psql mneme -c "
-SELECT op_type, target_kind, target_id, reason
-FROM memory_ops_log
-WHERE actor = 'sleep_agent' AND ts > now() - interval '5 minutes'
-ORDER BY ts DESC;
-"
+uv run python scripts/inspect_memory.py --limit 10
 
-# sleep_consolidate | archival | 142 | Merged 2 duplicates; both mention Ruff preference
-# sleep_promote     | core     | preferences | Promoted from archival 142: stable tooling preference
-# sleep_reflect     |          |             | periodic reflection snapshot
+# recent_ops 里可以看到:
+# sleep_consolidate / sleep_promote / sleep_reflect
 ```
 
 ```bash
 # 看最新 reflection(一段自然语言)
-psql mneme -c "
-SELECT after_value FROM memory_ops_log
-WHERE op_type = 'sleep_reflect' ORDER BY ts DESC LIMIT 1;
-"
+uv run python scripts/inspect_memory.py --limit 3
 
-# "User is a Java backend intern at Thunderbit, job-hunting for Java backend
-#  and AI agent roles. Prefers Ruff over Black for Python; consistent
-#  preference for async I/O patterns. Recently learned to avoid nested
-#  asyncio.gather in for-loops."
+# recent_ops 最新 sleep_reflect 的 after_value 是一段自然语言摘要。
 ```
+
+> 如果当前 active archival facts 少于 `SLEEP_MIN_ARCHIVAL_COUNT=10`,Sleep 只跑
+> `reflect` 是正常结果。Demo 要展示 promote / consolidate,需要先 dogfood 积累
+> 10+ 条真实事实。
 
 **讲解 talking points**:
 - **Plan phase 是 LLM 自主**决定跑哪些 phase——不是 cron + SQL update

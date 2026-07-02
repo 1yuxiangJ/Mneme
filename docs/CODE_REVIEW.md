@@ -1,7 +1,26 @@
 # Code Review — 自查报告
 
-> 在没跑过代码的情况下,我对 2103 行 Python + 200 行 SQL 自查的潜在 bug 和风险点。
-> 回家跑起来**前先看一遍**,大部分能预先避免。
+> 这是 Day 04 在“还没跑过本地环境”时写的历史自查报告。Day 05-07 已经
+> 按这里的 P0/P1 风险完成真实 PostgreSQL/pgvector 集成测试、真实 MCP smoke、
+> 手动 Sleep smoke,并把 `mypy strict` 清到 0。
+
+当前质量门:
+
+```bash
+/Users/mac/.local/bin/uv run ruff check
+/Users/mac/.local/bin/uv run mypy src
+/Users/mac/.local/bin/uv run pytest --run-integration
+```
+
+当前结果:
+
+```text
+ruff: All checks passed
+mypy: Success, no issues found in 22 source files
+pytest: 18 passed, 1 warning
+```
+
+下面保留原始自查内容,用于说明当时识别了哪些风险,以及后续是怎么逐项验证/修复的。
 
 ## 评级
 
