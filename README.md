@@ -113,6 +113,7 @@ mneme/
 ├── pyproject.toml               # uv / pip
 ├── .env.example                 # 占位符配置
 ├── scripts/setup.sh             # 回家一键装环境(幂等)
+├── scripts/seed_demo_memory.py   # 显式 --yes 后写入 demo-tagged memory
 ├── scripts/run_sleep_once.py     # 手动触发一次 Sleep cycle
 ├── scripts/inspect_memory.py     # 只读打印 memory / ops_log 快照
 ├── src/mneme/                   # 2103 行 Python · 17 模块

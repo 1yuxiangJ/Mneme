@@ -156,6 +156,16 @@ mcp__mneme__forget
 
 如果当前 memory 很少,`plan` 只跑 `reflect` 是正常的。
 
+想在本地演示 promote / consolidate,可以先显式写入一组 demo-tagged facts:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/seed_demo_memory.py --yes
+/Users/mac/.local/bin/uv run python scripts/run_sleep_once.py --min-archival-count 0
+```
+
+`seed_demo_memory.py` 默认不会写库,必须带 `--yes`。这些 fact 会带
+`demo-seed` tag,方便后续识别。
+
 ### 查看当前 memory / ops_log 快照
 
 ```bash
@@ -168,6 +178,12 @@ mcp__mneme__forget
 core_blocks
 archival_facts
 recent_ops
+```
+
+如果要看 soft-deleted facts:
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/inspect_memory.py --limit 10 --include-deleted
 ```
 
 ### 跑 unit tests

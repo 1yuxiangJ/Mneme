@@ -8,7 +8,7 @@
 
 - [ ] mneme service 跑起来(`uv run python -m mneme`)
 - [ ] Claude Code MCP 配置好,可看到 `mcp__mneme__remember` 等 4 个 tool
-- [ ] 已经跟 Claude Code 聊过一段时间,积累真实 memory(优先真实数据;不足时只展示 reflect)
+- [ ] 已经跟 Claude Code 聊过一段时间,积累真实 memory;如果不足,执行 `uv run python scripts/seed_demo_memory.py --yes`
 - [ ] 终端 1:`tail -f logs/mneme.log`(看实时 trace)
 - [ ] 终端 2:`uv run python scripts/inspect_memory.py --limit 10`(查 memory / ops_log 用)
 - [ ] OBS / QuickTime 录屏 + 鼠标光标高亮 + 字号调大
@@ -88,6 +88,8 @@ Claude Code 回:
 ```bash
 # 强制触发(不等 30 min idle)
 uv run python scripts/run_sleep_once.py
+# 如果事实数量不足,用于 demo 时可以降低本轮门槛:
+uv run python scripts/run_sleep_once.py --min-archival-count 0
 
 # 输出:
 # {"status": "ok", "plan": ["consolidate", "promote", "reflect"],
@@ -110,8 +112,8 @@ uv run python scripts/inspect_memory.py --limit 3
 ```
 
 > 如果当前 active archival facts 少于 `SLEEP_MIN_ARCHIVAL_COUNT=10`,Sleep 只跑
-> `reflect` 是正常结果。Demo 要展示 promote / consolidate,需要先 dogfood 积累
-> 10+ 条真实事实。
+> `reflect` 是正常结果。Demo 要展示 promote / consolidate,优先用真实 dogfood
+> 积累 10+ 条事实;数据不足时用 `seed_demo_memory.py --yes` 准备 demo-tagged facts。
 
 **讲解 talking points**:
 - **Plan phase 是 LLM 自主**决定跑哪些 phase——不是 cron + SQL update
