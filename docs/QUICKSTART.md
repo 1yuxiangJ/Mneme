@@ -132,9 +132,8 @@ scripts/claude-mneme.sh 会清理这些代理变量,并设置 NO_PROXY。
 mcp__mneme__list_memory
 mcp__mneme__remember
 mcp__mneme__recall
+mcp__mneme__forget
 ```
-
-`forget` 是下一步待测。
 
 ---
 
@@ -143,11 +142,32 @@ mcp__mneme__recall
 ### 强制触发 Sleep cycle(不等 30 min idle)
 
 ```bash
-uv run python -c "
-import asyncio
-from mneme.sleep.agent import run_sleep_cycle
-print(asyncio.run(run_sleep_cycle()))
-"
+/Users/mac/.local/bin/uv run python scripts/run_sleep_once.py
+```
+
+期望输出:
+
+```json
+{
+  "status": "ok",
+  "plan": ["reflect"]
+}
+```
+
+如果当前 memory 很少,`plan` 只跑 `reflect` 是正常的。
+
+### 查看当前 memory / ops_log 快照
+
+```bash
+/Users/mac/.local/bin/uv run python scripts/inspect_memory.py --limit 10
+```
+
+输出包含:
+
+```text
+core_blocks
+archival_facts
+recent_ops
 ```
 
 ### 跑 unit tests

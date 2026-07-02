@@ -89,7 +89,7 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 
 ## 当前状态
 
-🟢 **Day 05(2026-07-01):本地环境 + 核心集成测试跑通**
+🟢 **Day 06(2026-07-02):真实 MCP + 手动 Sleep 闭环跑通**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -97,7 +97,8 @@ scripts/claude-mneme.sh         # 终端 B:启动 Claude Code + Mneme MCP
 - ✅ Day 03:Sleep agent 完整框架(1166 行)
 - ✅ Day 04:简历/面试/demo 文档 + 代码自检
 - ✅ Day 05:PostgreSQL/pgvector/uv 环境跑通,补实 memory + staging 集成测试
-- ⏸️ Day 06+:填真实 API key + 跑 LLM e2e + dogfood + 录 demo
+- ✅ Day 06:真实 MCP `forget` 验证,新增手动 Sleep 触发和 memory inspect 脚本
+- ⏸️ Day 07+:mypy 类型债 + dogfood + prompt 调优 + 录 demo
 
 完整施工记录在 `docs/construction-log/`。
 
@@ -111,14 +112,16 @@ mneme/
 ├── pyproject.toml               # uv / pip
 ├── .env.example                 # 占位符配置
 ├── scripts/setup.sh             # 回家一键装环境(幂等)
+├── scripts/run_sleep_once.py     # 手动触发一次 Sleep cycle
+├── scripts/inspect_memory.py     # 只读打印 memory / ops_log 快照
 ├── src/mneme/                   # 2103 行 Python · 17 模块
 │   ├── __init__.py / __main__.py / main.py / config.py
 │   ├── mcp_server.py            # MCP 4 tools + activity 标记
 │   ├── db/{schema.sql, models.py}
 │   ├── llm/client.py            # DeepSeek + OpenAI embedding
-│   ├── memory/store.py          # CRUD + 权限自检 + ops log
+│   ├── memory/{store.py, inspect.py}
 │   ├── awake/{agent.py, tools.py}
-│   └── sleep/{prompts.py, staging.py, tools.py, agent.py, scheduler.py}
+│   └── sleep/{prompts.py, staging.py, tools.py, agent.py, scheduler.py, cli.py}
 ├── tests/
 │   ├── conftest.py              # integration 测试 gating
 │   ├── test_config.py           # unit(无 DB 能跑)
