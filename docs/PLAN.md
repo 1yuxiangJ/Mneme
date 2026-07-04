@@ -1,5 +1,9 @@
 # mneme — 总方案 (2026-06-17)
 
+> **历史设计稿**:这份文档记录 Day 01 的原始方案和设计推导,不再保证每一处
+> API 行为都等同当前代码。当前实现状态以 `docs/ARCHITECTURE.md`,
+> `docs/QUICKSTART.md`, `docs/FINAL_VERIFICATION.md` 和施工日志为准。
+
 > **简短版本**:做 Letta-inspired memory-as-a-service,通过 MCP 接 Claude Code,提供**跨 project 的用户画像长期记忆**。Awake + Sleep 双 agent,后者实现 sleep-time consolidation(论文出处:Letta 团队)。Python + FastAPI + LangGraph + PG + pgvector + DeepSeek。MVP 5-7 天。
 
 ---

@@ -142,7 +142,7 @@ ReAct = Reason + Act(2022 年 Google 论文)。LLM 反复跑:
 回到 Reason,直到 LLM 说"搞定"
 ```
 
-示例(`remember` 链路):
+示例(`remember` 链路,指后台 Awake ReAct 内部;MCP 层会先返回 `accepted`):
 
 ```
 用户:remember "我喜欢 4 空格"
@@ -156,7 +156,7 @@ Act 2:     insert_archival_fact(content="...", tags=["preference"])
 Observe 2: {"status": "ok", "fact_id": 123}
 
 Reason 3:  LLM 想:任务完成
-Final:     "已记住: fact_id=123, content='...'"
+Final:     "后台写入完成: fact_id=123, content='...'"
 ```
 
 没有 ReAct loop → `remember` 退化成"无脑插数据库" = CRUD 包装 = 项目废。
@@ -899,7 +899,7 @@ if actor != "sleep_agent":
 | Invariant | 在哪强制 |
 |---|---|
 | 只有 sleep_agent 能写 core_blocks | `memory/store.py:245` 应用层 check |
-| 每次 mutation 必须留 memory_ops_log | `memory/store.py` + `sleep/tools.py` 各写函数 |
+| 每次生效的 mutation 必须留 memory_ops_log | Awake 在 `memory/store.py` 同事务写;Sleep 在 `sleep/tools.py` 生成 pending ops,`atomic_swap` 成功时同事务 flush |
 | 同时最多一个 sleep cycle 跑 | `sleep/scheduler.py:44-47` `_cycle_running` flag + `max_instances=1` |
 | Sleep 全程操作 staging 表,不动主表 | `sleep/tools.py` 所有 UPDATE 写 `_staging` 表 |
 | Awake 操作完立刻 `mark_awake_activity` | `mcp_server.py:25` 在 `run_awake` wrap 里调一次 |
@@ -1500,23 +1500,23 @@ CREATE INDEX idx_ops_log_actor ON memory_ops_log(actor, ts DESC);
 
 ### 8 种实际写入的 op_type
 
-从 `memory/store.py:OpType` Literal 类型枚举 + `sleep/tools.py` 实际调用:
+从 `memory/store.py:OpType` Literal 类型枚举 + 当前实际调用:
 
 | # | op_type | 谁触发 | 啥时候插 | target_kind |
 |---|---|---|---|---|
 | 1 | `remember` | Awake | `insert_archival(actor='awake_agent')` | archival |
 | 2 | `forget` | Awake | `soft_delete_archival(actor='awake_agent')` | archival |
-| 3 | `sleep_consolidate` | Sleep | `apply_consolidation` + **`apply_resolutions` 也用这个**(MVP collapsed) | archival 或 core |
-| 4 | `sleep_promote` | Sleep | `apply_promotions` | core |
-| 5 | `sleep_demote` | Sleep | `apply_demotions` | archival |
-| 6 | `sleep_reflect` | Sleep | `log_reflection`(写 about-user 段落) | NULL |
-| 7 | `policy_violation` | 异常路径 | `write_core_block` 被 non-sleep actor 调时 | core |
-| 8 | `recall` | 定义但**不写入** | hot path 不留 log | - |
+| 3 | `sleep_consolidate` | Sleep | `apply_consolidation` 生成 pending op,swap 成功后 flush | archival |
+| 4 | `sleep_promote` | Sleep | `apply_promotions` 生成 pending op,swap 成功后 flush | core |
+| 5 | `sleep_demote` | Sleep | `apply_demotions` 生成 pending op,swap 成功后 flush | archival |
+| 6 | `sleep_resolve` | Sleep | `apply_resolutions` 生成 pending op,swap 成功后 flush | core |
+| 7 | `sleep_reflect` | Sleep | `draft_reflection_log` 生成 about-user pending op,swap 成功后 flush | NULL |
+| 8 | `policy_violation` | 异常路径 | `write_core_block` 被 non-sleep actor 调时 | core |
 
-**两个 known wart 要记牢**:
+**两个边界要记牢**:
 
 1. **`recall` 不写日志**——`semantic_search_archival` 是高频热路径,每次再插一行 ops_log 翻倍写放大。`mark_archival_used` 函数注释明确写 "No log (hot path)"。
-2. **`apply_resolutions` 写 `sleep_consolidate`**——`sleep/tools.py:340` 注释 "resolve op_type collapsed under consolidate for MVP"。MVP 取舍,生产化要拆出独立 `sleep_resolve`。
+2. **Sleep 日志不是 phase 内直接写主表**——Sleep phase 只生成 `pending_ops`。只有最后 `atomic_swap` 成功时,这些 pending ops 才会在同一个 transaction 内写入主 `memory_ops_log`。swap 失败则主表不变、日志也不写。
 
 ### 字段逐个剖
 
@@ -2250,9 +2250,10 @@ mcp_server.py: @mcp.tool() remember(...)
     │ 1. mark_awake_activity()        ← scheduler.py module 变量更新
     │ 2. 包装 command 字符串
     │    "remember this fact about the user: \n  content: ... \n  tags: preference \n  confidence: 3"
-    │ 3. 调 run_awake(command)
+    │ 3. asyncio.create_task(_run_awake(command))
+    │ 4. 立刻返回 {"status":"accepted","mode":"async"}
     ▼
-awake/agent.py: run_awake(command)
+后台任务: awake/agent.py: run_awake(command)
     │ - get_awake_agent() (lazy singleton)
     │ - agent.ainvoke({"messages": [("user", command)]})
     ▼
@@ -2287,31 +2288,28 @@ LangGraph create_react_agent (LLM B: DeepSeek)
     │     ▼
     │ awake/tools.py: insert_archival_fact(...)
     │     │ - insert_archival(session, ..., actor='awake_agent', reason=...)
-    │     │   ├─ embed_text(content) ──→ 阿里通义 API call #2
+    │     │   ├─ embed_text(content) ──→ 命中同文本 embedding cache
     │     │   ├─ session.add(ArchivalFact(..., embedding=vec))
     │     │   ├─ session.flush()        # 拿 fact.id (自增)
     │     │   ├─ session.add(MemoryOpsLog(op_type='remember', actor='awake_agent', ...))
     │     │   └─ session.commit()       # 一次 commit:fact + ops_log 原子
-    │     └─ 返回 {"status": "ok", "fact_id": 123, "content": "..."}
+    │     └─ 内部返回 {"status": "ok", "fact_id": 123, "content": "..."}
     │     │
     │     ▼
     │ [Observe] LLM B context 收到 "{"status": "ok", ...}"
     │
     │ ┌─ ReAct Step 3 ────────────────────────────────────────┐
     │ │ [Reason] LLM B 决定任务完成,生成 final answer        │
-    │ │ → "已记住, fact_id=123: '用户喜欢 4 空格'"             │
+    │ │ → "后台记忆写入完成: fact_id=123"                    │
     │ └─────────────────────────────────────────────────────┘
     ▼
-返回 dict {"final_message": "...", "step_count": 6}
+后台返回 dict {"status": "ok", "final_message": "...", "step_count": 6}
     │
     ▼
-mcp_server.py: 返回 MCP response
+mcp_server.py: MCP response 早已返回 accepted;后台结果只进入日志/服务日志
     │
     ▼
-HTTP 200 → Claude Code (LLM A) 收到
-    │ LLM A 决定告诉用户"已记住"
-    ▼
-用户终端显示"已记住"
+Claude Code 不会等这个后台结果;用户侧只看到前面已返回的 accepted/已收到
 ```
 
 ### 调用次数清算
@@ -2387,27 +2385,27 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 一句话:**content = 要记的内容,query = 要搜的问题**。remember 里二者恰好同文本,recall 里只有 query 没有 content。
 
-#### 2. 【修正 + 优化点】remember 的两次 embedding 是同一文本,可复用
+#### 2. 【已完成】remember 的两次 embedding 是同一文本,可复用
 
 前面"调用次数"说 2 次 embedding 算"不同文本"**不准确**:remember 里查重(query)和入库(content)是**同一段文本**,各算一次 = **浪费一次 embedding API**。
 
-→ **优化点**:算一次,查重和插入复用同一向量。MVP 没做,是明显的省 token 点。
-> 面试话术:"remember 链路里查重和插入对同一文本各算了一次 embedding,可以 cache 复用——MVP 没做。"
+→ **当前实现**:Day 14 已加进程内 embedding cache。`search_archival(query=content)` 刚算过的同文本向量,`insert_archival(content)` 会直接复用,不再重复调用 embedding API。
+> 面试话术:"remember 链路里查重和插入对同一文本会用同一份 embedding。MVP 用的是进程内 LRU cache,已经把最明显的一次重复 API 调用省掉;后续如果多进程部署,再考虑 Redis/provider 级 cache。"
 
-#### 3. 【优化点】写异步、读同步
+#### 3. 【已完成】写异步、读同步
 
-**现状**:MCP 的 `remember` 是 `return await run_awake(cmd)`,**同步阻塞** 2.5-4.5 秒才返回。MCP 协议本就是请求-响应,Claude Code 调了得等返回。是否拖慢体验取决于 Claude Code **何时**调(答完用户之后调 → 无感;边答边记 → 卡顿),而调用时机**不是我们能控制的**。
+**当前现状**:`remember` / `forget` 在 MCP 层快速返回 `{"status":"accepted","mode":"async"}`,后台 `asyncio.create_task(_run_awake(command))` 继续跑 ReAct。`recall` / `list_memory` 仍然同步,因为 Claude Code 要拿结果才能回答用户。
 
-**优化方向 —— 按工具语义区分同步/异步**:
+**按工具语义区分同步/异步**:
 
 | 工具类型 | 同步/异步 | 理由 |
 |---|---|---|
 | **`remember` / `forget`**(写) | **可异步 fire-and-forget** | 用户不等结果,立刻返回"已收到",后台跑 Awake |
 | **`recall` / `list_memory`**(读) | **必须同步** | Claude Code 要拿结果才能回答用户 |
 
-异步的代价:写类工具异步后**拿不到 fact_id、拿不到同步去重结果、失败用户不知道**。所以"写异步"成立的前提是 **写操作不需要同步返回信息**。
+异步的代价:写类工具异步后**MCP 调用方拿不到 fact_id、拿不到同步去重结果、失败只进服务日志**。所以"写异步"成立的前提是 **写操作不需要同步返回信息**。
 
-> 面试话术:"MVP 的 remember 同步会阻塞 tool 调用 2.5-4.5 秒。优化是把写类工具(remember/forget)做成 fire-and-forget 立刻返回、后台处理,读类工具(recall)保持同步因为要拿结果回答用户。代价是写类失去同步去重和 fact_id 返回。这是按工具语义区分同步/异步的设计。"
+> 面试话术:"Mneme 按工具语义做同步/异步拆分:写类工具 remember/forget 立刻 accepted,后台跑 Awake ReAct;读类工具 recall/list_memory 保持同步,因为结果会影响当前回答。这个取舍用最终一致换交互延迟,代价是写入失败需要看服务日志,后续可加失败队列或状态查询。"
 
 ---
 
@@ -2481,8 +2479,9 @@ sleep/agent.py: run_sleep_cycle()
     │     ├─ for each MERGE action:
     │     │   UPDATE archival_facts_staging SET content=:merged WHERE id=:kept
     │     │   UPDATE archival_facts_staging SET is_deleted=TRUE WHERE id = ANY(:discarded)
-    │     │   INSERT INTO memory_ops_log (op_type='sleep_consolidate', ...)
-    │     └─ COMMIT
+    │     │   return MemoryOpDraft(op_type='sleep_consolidate', ...)
+    │     └─ COMMIT staging 修改
+    │ state["pending_ops"] += returned drafts
     │ state["consolidate_actions"] = actions
     │ 耗时: ~3-10 秒(LLM + cluster query)
     ▼
@@ -2501,8 +2500,9 @@ sleep/agent.py: run_sleep_cycle()
     │     ├─ for each PROMOTE:
     │     │   SELECT value FROM core_blocks_staging WHERE label=:target (留 before)
     │     │   UPDATE core_blocks_staging SET value=:v, version=version+1, last_writer='sleep_agent' WHERE label=:target
-    │     │   INSERT INTO memory_ops_log (op_type='sleep_promote', ...)
-    │     └─ COMMIT
+    │     │   return MemoryOpDraft(op_type='sleep_promote', ...)
+    │     └─ COMMIT staging 修改
+    │ state["pending_ops"] += returned drafts
     │ state["promote_actions"] = actions
     │ 耗时: ~2-5 秒
     ▼
@@ -2518,8 +2518,9 @@ sleep/agent.py: run_sleep_cycle()
     │     返回 {"actions": [{"fact_id":..., "decision":"FORGET", "reason":...}, ...]}
     │   await tools.apply_demotions(session, actions)
     │     ├─ UPDATE archival_facts_staging SET is_deleted=TRUE WHERE id=:i
-    │     ├─ INSERT INTO memory_ops_log (op_type='sleep_demote', ...)
-    │     └─ COMMIT
+    │     ├─ return MemoryOpDraft(op_type='sleep_demote', ...)
+    │     └─ COMMIT staging 修改
+    │ state["pending_ops"] += returned drafts
     │ 耗时: ~2-5 秒
     ▼
 
@@ -2531,8 +2532,9 @@ sleep/agent.py: run_sleep_cycle()
     │   返回 {"contradictions": [{"blocks_involved":[...], "fix_block":"...", "new_block_value":"...", ...}]} 或 {"contradictions":[]}
     │ await tools.apply_resolutions(session, contradictions)
     │   ├─ UPDATE core_blocks_staging SET value=:v WHERE label=:fix_block
-    │   ├─ INSERT INTO memory_ops_log (op_type='sleep_consolidate', ...)  ← NOTE: 用了 consolidate 不是 resolve(MVP wart)
-    │   └─ COMMIT
+    │   ├─ return MemoryOpDraft(op_type='sleep_resolve', ...)
+    │   └─ COMMIT staging 修改
+    │ state["pending_ops"] += returned drafts
     │ 耗时: ~2-5 秒
     ▼
 
@@ -2543,16 +2545,14 @@ sleep/agent.py: run_sleep_cycle()
     │ llm = get_chat_llm(temperature=0.3)  ← 唯一不用 0.0 的 phase
     │ resp = await llm.ainvoke([HumanMessage(content=rendered)])  ──→ DeepSeek API call #6
     │   返回 plain text "User is a Java backend intern at Thunderbit..."
-    │ await tools.log_reflection(session, reflection_text)
-    │   ├─ INSERT INTO memory_ops_log (op_type='sleep_reflect', target_kind=NULL, after_value=text, ...)
-    │   └─ COMMIT
+    │ state["pending_ops"] += [tools.draft_reflection_log(reflection_text)]
     │ 耗时: ~2-4 秒
     ▼
 
 [⑧ node_swap]
     │ if aborted: cleanup_staging + return
     │ if snapshot_ts is None: cleanup_staging + return
-    │ await staging.atomic_swap(session, snapshot_ts)
+    │ await staging.atomic_swap(session, snapshot_ts, pending_ops=state["pending_ops"])
     │   ├─ INSERT INTO archival_facts_staging SELECT * FROM archival_facts
     │   │     WHERE created_at > :snapshot_ts ON CONFLICT (id) DO NOTHING
     │   ├─ ALTER TABLE core_blocks RENAME TO core_blocks_tmp_swap
@@ -2561,6 +2561,7 @@ sleep/agent.py: run_sleep_cycle()
     │   ├─ (同 for archival_facts)
     │   ├─ TRUNCATE core_blocks_staging
     │   ├─ TRUNCATE archival_facts_staging
+    │   ├─ INSERT pending_ops INTO memory_ops_log
     │   └─ COMMIT
     │ 耗时: ~50-200 ms
     ▼
@@ -2736,15 +2737,15 @@ RENAME 拿的是 PG 最高级锁:
 - Awake 在 swap 瞬间 `SELECT archival_facts`:**短暂阻塞**(几十-几百 ms)直到 swap commit,然后继续(读新表)
 - 极端 case:Awake 有个 5 秒慢 query 还在跑 → swap 等 5 秒拿不到锁 → 默认无 timeout 会一直等
 
-**Mitigation 选项**(MVP 没做,生产化要做):
+**当前 mitigation**(Day 14 已做):
 ```sql
 SET lock_timeout = '500ms';
 ```
-swap 拿不到锁就放弃,cycle 失败回滚。下次 cycle 再尝试。
+swap 拿不到锁就放弃,本轮 `atomic_swap` transaction 回滚。因为 Day 15 已把 Sleep 日志改成 `pending_ops`,所以 swap 失败时**主表不更新,主 `memory_ops_log` 也不会写入本轮 Sleep 日志**。下次 cycle 重新 snapshot 再尝试。
 
 ### 面试 30 秒口径
 
-> "swap 用三对 RENAME(per table)在同一 transaction:`main → tmp, staging → main, tmp → staging`。三对是为了保证 `main` 名字全程占着,Awake 不会读到 'relation does not exist'。单 transaction 保证原子,要么全成要么 PG 自动回滚。代价是 RENAME 拿 ACCESS EXCLUSIVE LOCK 短暂阻塞 Awake——已知 trade-off,生产化加 lock_timeout mitigation。"
+> "swap 用三对 RENAME(per table)在同一 transaction:`main → tmp, staging → main, tmp → staging`。三对是为了保证 `main` 名字全程占着,Awake 不会读到 'relation does not exist'。单 transaction 保证原子,要么全成要么 PG 自动回滚。代价是 RENAME 拿 ACCESS EXCLUSIVE LOCK 短暂阻塞 Awake。当前用 `lock_timeout=500ms` 快速失败,并且 Sleep 日志先放在 pending_ops,只有 swap 成功才写主审计日志。"
 
 ---
 
@@ -3851,7 +3852,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 9 | **embedding defer-write** | MVP 是 fail-fast:embedding 失败 fact 不入库 | fact 先入库(embedding=NULL)+ 后台 backlog worker 补 | §6.2 |
 | 10 | **idle 计时持久化** | 存进程内存变量,重启归零 | 启动时从 ops_log 推算最近活动时间(零写放大) | §6.4 |
 | 11 | **ops_log append-only DB 强制** | 应用层自律,DB 没拦 UPDATE/DELETE | PG trigger `BEFORE UPDATE/DELETE RAISE EXCEPTION` 或 `REVOKE` | §4.3 / §7 ① |
-| 12 | **resolve 独立 op_type** | Day 14 已做:resolve 写 `sleep_resolve` | 后续可在 inspect 输出里单独分组展示 | §4.3 |
+| 12 | **resolve 独立 op_type** | Day 14 已做:resolve 生成 `sleep_resolve`;Day 15 改为 pending op,swap 成功后写入主日志 | 后续可在 inspect 输出里单独分组展示 | §4.3 |
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
 | 14 | **Awake ReAct 卡死防护** | Day 14 已做:`recursion_limit=8` + LLM `timeout=20,max_retries=1` + 整体 `wait_for=45s` + 写类异步 | 后续可加 p99 latency 监控和 step_count 接近 limit 告警 | §5.2 讨论(Awake ReAct 风险) |
 
@@ -3878,14 +3879,16 @@ WHERE a.embedding <=> b.embedding < 0.15;
 → **核心认知**:ReAct 的"乱"在**安全/幂等操作**上只是经济浪费,在**有硬依赖的操作**上是正确性灾难。Awake 的 5 个 tool 都安全幂等(读无副作用、写单条原子 + 去重),所以乱跳最坏多花钱;sleep 有 snapshot→改→swap 硬依赖,乱 = 毁数据。
 
 **死循环 / 卡死防护**:
-- 防死循环:LangGraph `recursion_limit`(默认 25)硬截断 + T=0 收敛 + prompt 引导 finalize → 实际 remember 3 步就完
-- **MVP 真实弱点**:默认 recursion_limit=25 + LLM 无显式 timeout + 同步阻塞 → 极端情况卡几十秒(深入分析见下)
+- 防死循环:显式 `recursion_limit=8` + T=0 收敛 + prompt 引导 finalize → 实际 remember 3 步左右
+- 防单步卡住:`ChatOpenAI(timeout=20, max_retries=1)`
+- 防整体卡住:`asyncio.wait_for(..., timeout=45)`
+- 防写类拖慢体验:`remember` / `forget` MCP 层快速返回 accepted,后台执行
 
 ---
 
-# §专题 · Awake 同步 ReAct 卡死弱点(深入)
+# §专题 · Awake ReAct 卡死风险与当前加固
 
-> 这是项目一个**真实、值得专门讨论**的弱点。面试若被问"你这同步架构会不会卡死"或"ReAct 失控怎么办",这一节是完整答案。结构:故障场景 → 根因 → 影响 → 分层修复 → 监控 → 话术。
+> 这一节原本记录的是 Day 14 前的弱点。当前代码已经落地了限步数、限单步、限整体、写类异步四层加固。面试若被问"ReAct 失控怎么办",重点讲**风险如何分层拆解,以及现在每层如何兜底**。
 
 ## 1. 故障场景矩阵(什么情况卡、卡多久)
 
@@ -3893,26 +3896,27 @@ WHERE a.embedding <=> b.embedding < 0.15;
 
 | 场景 | 触发条件 | 时长估算 |
 |---|---|---|
-| **A. LLM 反复跳跃** | LLM 抽风,在 search ↔ load_core 之间来回跳不收敛 | 跳满 recursion_limit=25 步 × ~1.5s/步 ≈ **37 秒** |
-| **B. 单次 LLM API 卡住 + 重试** | DeepSeek 端慢/抖动,openai client 默认 `timeout` 很大 + `max_retries=2` | 一步可能 **60s × (1+2 重试) ≈ 180 秒** |
-| **C. embedding API 卡住** | 阿里通义慢,`search`/`insert` 里的 `embed_text` 阻塞 | 同 B 量级,每次 embedding 都可能卡 |
-| **D. 组合爆炸** | 跳很多步 + 其中几步 API 慢 | **分钟级**,最坏理论上 25 步全慢 = 几分钟 |
+| **A. LLM 反复跳跃** | LLM 抽风,在 search ↔ load_core 之间来回跳不收敛 | `recursion_limit=8` 截断 |
+| **B. 单次 LLM API 卡住 + 重试** | DeepSeek 端慢/抖动 | `timeout=20s,max_retries=1` |
+| **C. embedding API 卡住** | 阿里通义慢,`search`/`insert` 里的 `embed_text` 阻塞 | 当前主要靠整体 `wait_for=45s`;后续可给 embedding client 独立 timeout |
+| **D. 组合爆炸** | 跳很多步 + 其中几步 API 慢 | 外层 `asyncio.wait_for(...,45s)` |
 
 → 关键认知:**recursion_limit 只限"步数",不限"单步时长"**。所以即使步数被限住(场景 A 有上限),**单步 API 卡住(B/C)仍能让总时长爆炸**。两个维度都要管。
 
-## 2. 根因:三个默认值没动 + 同步设计
+## 2. 当前加固点
 
-1. **`recursion_limit` 用 LangGraph 默认 25**——没显式调小;Awake 根本不需要 25 步(remember 3 步、recall 2-3 步)
-2. **`ChatOpenAI` 没设 `timeout` / `max_retries`**——用 openai client 默认(timeout 很大 + 重试 2 次),单步可能卡很久
-3. **`run_awake` 同步阻塞**——MCP tool call 等 ReAct 全程跑完才返回
+1. **限步数**:`agent.ainvoke(..., config={"recursion_limit": 8})`
+2. **限单步 LLM**:`ChatOpenAI(..., timeout=20, max_retries=1)`
+3. **限整体**:`asyncio.wait_for(..., timeout=45)`
+4. **写类异步**:`remember` / `forget` 立刻返回 accepted,后台跑 Awake
 
-→ **三者叠加**:步数没限死 + 单步没限死 + 全程同步等 = 极端情况这次 tool call 卡几十秒到分钟级。
+→ 这四层分别处理"步数失控 / 单步 API 慢 / 组合爆炸 / 用户等待体验"。
 
 ## 3. 影响范围
 
-- 阻塞的是**那一次 MCP tool call**(不是整个服务——asyncio 事件循环还能处理别的请求)
-- 但对**调用方 Claude Code**:那次 `remember`/`recall` 迟迟不返回
-- 用户感知:取决于 Claude Code 调用时机——**答完用户后台调 → 无感**;**边答边调 → 用户看到卡顿**
+- 阻塞的是**那一次 Awake 请求**(不是整个服务——asyncio 事件循环还能处理别的请求)
+- 对写类工具:`remember` / `forget` 已不阻塞 Claude Code 当前回答,因为 MCP 层先返回 accepted
+- 对读类工具:`recall` / `list_memory` 仍同步,但有整体 45s 兜底
 - 不会数据损坏(Awake tool 安全幂等),纯粹是**延时/体验**问题
 
 ## 4. 分层修复(每层挡一个维度,代码 + 代价)
@@ -3958,11 +3962,11 @@ return {"status": "queued"}
 - **p99 tool 延时监控** → 正常 remember 2.5-4.5s,p99 飙到几十秒说明踩了 B/C/D
 - ops_log 的 ts 间隔 → 能反推哪次操作异常慢
 
-→ MVP 没做监控(§7 ⑧ eval/监控缺失),生产化要补。
+→ 当前只做了代码级 guardrail,还没做 metrics dashboard / p99 latency 报警。生产化要补。
 
 ## 6. 一句话面试话术
 
-> "Awake 同步 ReAct 有真实卡死风险。recursion_limit 只限步数不限单步时长,所以两个维度都要管:**限步数**(recursion_limit=8)+ **限单步**(LLM timeout=20s, max_retries=1)+ **限整体**(asyncio.wait_for 45s 兜底)。这三层防卡死。体验上再加第四层——**写类工具(remember/forget)改 fire-and-forget**,用户根本不等;读类(recall)保持同步因为要拿结果。可观测靠 step_count 接近 limit 报警 + p99 延时监控。MVP 这些没做是 scope 选择,但我清楚弱点在哪、怎么分层补。"
+> "Awake ReAct 的风险我按四层拆:限步数、限单步、限整体、写类异步。现在代码里 `recursion_limit=8`,LLM `timeout=20s,max_retries=1`,外层 `wait_for=45s`;同时 remember/forget 快速返回 accepted 后台处理,recall/list_memory 同步但有超时兜底。剩余短板是监控和后台失败队列,这是后续生产化项。"
 
 → 这个回答的价值:**把模糊的"会不会卡死"拆成"步数维度 + 单步维度 + 整体维度"三个可独立处理的问题,每个给代码级方案 + 代价 + 监控**。这是 senior 级的故障分析能力。
 

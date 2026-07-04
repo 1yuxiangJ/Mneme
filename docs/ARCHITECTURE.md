@@ -312,7 +312,7 @@ Claude Code → mneme MCP server:
 
 > **HNSW**(Hierarchical Navigable Small World):向量索引算法。普通 B-tree 不适合向量(按一维排序,向量是多维)。HNSW 用图结构,几毫秒内找到 K 个最近邻(approximate,实践够用)。
 
-> **transaction**(事务):数据库的"原子操作单元"。一组 SQL 要么全成功要么全回滚。mneme 把 INSERT archival + INSERT memory_ops_log 放一个 transaction,避免"fact 写了但 audit log 漏了"。
+> **transaction**(事务):数据库的"原子操作单元"。一组 SQL 要么全成功要么全回滚。Awake 写入时把 INSERT archival + INSERT memory_ops_log 放一个 transaction;Sleep 写入时先累积 pending_ops,最后在 atomic swap 同一 transaction 里 flush 到 memory_ops_log。
 
 ---
 

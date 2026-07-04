@@ -37,9 +37,9 @@ Claude Code 回:
 
 ---
 
-## 场景 2:实时 remember,DB 立刻看(1 min)
+## 场景 2:实时 remember,后台落库后查看(1 min)
 
-**剧本**:跟 Claude Code 透露新偏好,DB 立即可见。
+**剧本**:跟 Claude Code 透露新偏好,MCP tool 先返回 accepted,后台 Awake ReAct 落库。
 
 ```
 你:我决定以后所有项目用 Ruff,不用 Black 了
@@ -50,9 +50,9 @@ Claude Code(trace):
       tags=["preference", "tooling"],
       confidence=3
     )
-  ← {"status": "ok", "fact_id": 142, ...}
+  ← {"status": "accepted", "mode": "async", "operation": "remember", ...}
 
-你(终端 2):
+你(终端 2,等 2-5 秒后):
   uv run python scripts/inspect_memory.py --limit 5
   → archival_facts 里出现最新 fact, recent_ops 里出现 remember 审计记录
 ```
@@ -104,8 +104,8 @@ uv run python scripts/run_demo_cycle.py --seed --yes
 # 看 Sleep 干了啥
 uv run python scripts/inspect_memory.py --limit 10
 
-# recent_ops 里可以看到:
-# sleep_consolidate / sleep_promote / sleep_reflect
+# recent_ops 里可以看到本轮 swap 成功后写入的 Sleep 日志:
+# sleep_consolidate / sleep_promote / sleep_resolve / sleep_reflect
 ```
 
 ```bash

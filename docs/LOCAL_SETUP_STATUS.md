@@ -1,8 +1,8 @@
 # Local Setup Status
 
-> Updated on 2026-07-02 by Codex.
+> Updated on 2026-07-05 by Codex.
 
-## 2026-07-02 Update
+## 2026-07-05 Update
 
 Current quality gate:
 
@@ -16,8 +16,8 @@ Observed result:
 
 ```text
 ruff: All checks passed
-mypy: Success, no issues found in 22 source files
-pytest: 18 passed, 1 warning
+mypy: Success, no issues found in 24 source files
+pytest: 28 passed, 1 warning
 ```
 
 Real MCP + Sleep smoke has also been verified:

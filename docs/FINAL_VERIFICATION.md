@@ -87,7 +87,11 @@ plan 至少包含 reflect;数据足够时应出现 promote / consolidate
 recent_ops 里有 sleep_reflect
 如果触发 promote,core_blocks version 会增加,recent_ops 有 sleep_promote
 如果触发 consolidate,recent_ops 有 sleep_consolidate
+如果触发 resolve,recent_ops 有 sleep_resolve
 ```
+
+Sleep 日志是 pending ops 语义:只有 `atomic_swap` 成功后才会写入主
+`memory_ops_log`;如果 swap 因 lock timeout 失败,主表不变,本轮 Sleep 日志也不会写入。
 
 清理 demo seed 数据:
 
