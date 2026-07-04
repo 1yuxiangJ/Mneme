@@ -10,6 +10,8 @@ its system prompt policy.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -17,6 +19,9 @@ from mcp.server.fastmcp import FastMCP
 from mneme.awake.agent import run_awake as _run_awake
 from mneme.config import settings
 from mneme.sleep.scheduler import mark_awake_activity
+
+logger = logging.getLogger("mneme.mcp")
+_background_awake_tasks: set[asyncio.Task[dict[str, Any]]] = set()
 
 
 async def run_awake(command: str) -> dict[str, Any]:
@@ -26,6 +31,39 @@ async def run_awake(command: str) -> dict[str, Any]:
     """
     mark_awake_activity()
     return await _run_awake(command)
+
+
+def _schedule_awake_write(command: str, operation: str) -> dict[str, Any]:
+    """Schedule write-side Awake work and return immediately.
+
+    `remember` and `forget` are eventually consistent. They should not block
+    Claude Code's current response on LLM, embedding, and database write latency.
+    """
+    mark_awake_activity()
+    task = asyncio.create_task(_run_awake(command))
+    _background_awake_tasks.add(task)
+
+    def _log_background_result(done: asyncio.Task[dict[str, Any]]) -> None:
+        _background_awake_tasks.discard(done)
+        try:
+            result = done.result()
+        except Exception:
+            logger.exception("background %s task failed", operation)
+            return
+        if result.get("status") not in (None, "ok"):
+            logger.warning("background %s task returned %s", operation, result)
+
+    task.add_done_callback(_log_background_result)
+    return {
+        "status": "accepted",
+        "mode": "async",
+        "operation": operation,
+        "message": (
+            f"{operation} request accepted; memory write will be processed "
+            "in the background."
+        ),
+    }
+
 
 mcp = FastMCP(
     "mneme",
@@ -59,7 +97,7 @@ async def remember(
         f"  confidence: {confidence}\n"
         "First check for near-duplicates via search_archival, then insert."
     )
-    return await run_awake(cmd)
+    return _schedule_awake_write(cmd, "remember")
 
 
 @mcp.tool()
@@ -102,4 +140,4 @@ async def forget(fact_id: int, reason: str) -> dict[str, Any]:
         reason: Why we're forgetting it.
     """
     cmd = f"forget archival fact id={fact_id}; reason={reason}"
-    return await run_awake(cmd)
+    return _schedule_awake_write(cmd, "forget")

@@ -3840,20 +3840,20 @@ WHERE a.embedding <=> b.embedding < 0.15;
 
 | # | 优化点 | 现状 | 怎么改 | 出处 |
 |---|---|---|---|---|
-| 1 | **embedding 复用** | remember 链路里查重(query)和入库(content)是同一文本,各算一次 embedding | 算一次,cache 复用同一向量 | §5.1 讨论补录 |
-| 2 | **写异步、读同步** | `remember`/`forget` 同步阻塞 tool 调用 2.5-4.5s | 写类工具 fire-and-forget 立刻返回、后台跑;读类(recall)保持同步。代价:写类失去同步去重 + fact_id 返回 | §5.1 讨论补录 |
+| 1 | **embedding 复用** | Day 14 已做:进程内 embedding cache,同文本复用向量 | 后续可加跨进程 cache / provider 级别 metrics | §5.1 讨论补录 |
+| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall`/`list_memory` 同步 | 后续可加后台失败队列 / 用户可查询写入状态 | §5.1 讨论补录 |
 | 3 | **swap 字段级合并** | swap 整行覆盖,丢 cycle 期间 Awake 的 use_count 更新 | 按字段分归属:语义字段(content/confidence)取 staging,统计字段(use_count/last_used)取主表回填 | §4.4 Q3 |
 | 4 | **大数据量放弃整表复制** | snapshot 整表复制到 staging,100 万行扛不住 | 改 MVCC 快照读(REPEATABLE READ,不锁不复制)+ 短事务只 apply 改动的少数行 | §4.4 Q1 |
-| 5 | **swap 加 lock_timeout** | RENAME 拿 ACCESS EXCLUSIVE,撞慢查询会队头阻塞所有读 | `SET lock_timeout='500ms'`,拿不到锁快速失败放弃本轮 swap | §4.4 Q2 |
+| 5 | **swap 加 lock_timeout** | Day 14 已做:swap transaction 内设置 `lock_timeout=500ms` | 后续可加 retry/backoff 和失败告警 | §4.4 Q2 |
 | 6 | **partial index 谓词硬编码**(注意事项) | 谓词若用参数绑定 `$1`,planner 不用 partial index → 白建 | query 硬编码 `WHERE is_deleted=FALSE` + EXPLAIN 验证走 Index Scan | §4.2 Q2 |
 | 7 | **use_count 纯读方案**(可选) | 读操作偷偷 UPDATE use_count(违反 CQS,但可接受) | 真要纯读:append 到独立 `access_log` 表,Sleep 聚合时 COUNT | §4.2 Q1 |
 | 8 | **可信置信度用 logprobs**(可选) | confidence 由 LLM 正文自报(没校准) | 真要细粒度可信置信度:读 token logprobs + 校准(temperature/Platt scaling) | §4.2 Q3 |
 | 9 | **embedding defer-write** | MVP 是 fail-fast:embedding 失败 fact 不入库 | fact 先入库(embedding=NULL)+ 后台 backlog worker 补 | §6.2 |
 | 10 | **idle 计时持久化** | 存进程内存变量,重启归零 | 启动时从 ops_log 推算最近活动时间(零写放大) | §6.4 |
 | 11 | **ops_log append-only DB 强制** | 应用层自律,DB 没拦 UPDATE/DELETE | PG trigger `BEFORE UPDATE/DELETE RAISE EXCEPTION` 或 `REVOKE` | §4.3 / §7 ① |
-| 12 | **resolve 独立 op_type** | resolve 借用了 `sleep_consolidate` | 拆出独立 `sleep_resolve`,审计更清晰 | §4.3 |
+| 12 | **resolve 独立 op_type** | Day 14 已做:resolve 写 `sleep_resolve` | 后续可在 inspect 输出里单独分组展示 | §4.3 |
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
-| 14 | **Awake ReAct 卡死防护** | 用默认 recursion_limit=25 + LLM 无显式 timeout + 同步阻塞 → 极端情况(LLM 抽风跳满 25 步 / API 卡住重试)卡几十秒~分钟 | 三层:`recursion_limit=8`(限步数)+ `ChatOpenAI(timeout=20, max_retries=1)`(限单步)+ 写类工具异步(不让用户等) | §5.2 讨论(Awake ReAct 风险) |
+| 14 | **Awake ReAct 卡死防护** | Day 14 已做:`recursion_limit=8` + LLM `timeout=20,max_retries=1` + 整体 `wait_for=45s` + 写类异步 | 后续可加 p99 latency 监控和 step_count 接近 limit 告警 | §5.2 讨论(Awake ReAct 风险) |
 
 **面试一句话**:"这项目我维护了一个优化 backlog,十几项,从 embedding 复用、写异步读同步,到 swap 字段级合并、大数据量改 MVCC 快照——每项都知道现状、改法和触发条件。MVP 主动没做,是 scope 选择不是没想到。"
 

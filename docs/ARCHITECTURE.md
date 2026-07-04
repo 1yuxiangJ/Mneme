@@ -100,9 +100,11 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 例:你说"我决定以后所有项目都用 Ruff" → LLM 内部判断这是 cross-project 偏好 → 调 `remember("user prefers Ruff", ["preference", "tooling"], 3)`
 
-**mneme 内部**:Awake agent ReAct → 先 `search_archival` 去重 → 没重复就 `insert_archival_fact` → 写 `memory_ops_log` → 返回 fact_id
+**mneme 内部**:MCP tool 先快速返回 `accepted`;后台 Awake agent ReAct → 先 `search_archival` 去重 → 没重复就 `insert_archival_fact` → 写 `memory_ops_log`
 
-**返回**:`{"final_message": "Stored as fact 142", "step_count": 6}`
+**返回**:`{"status": "accepted", "mode": "async", "operation": "remember"}`
+
+**为什么异步**:`remember` 是写类操作,Claude Code 当前回答通常不依赖 fact_id。同步等待会把 LLM ReAct + embedding + DB 写入的 2-5 秒延迟叠到用户体验上。Mneme 选择写异步、读同步:`remember` / `forget` 后台处理,`recall` / `list_memory` 同步返回可用结果。
 
 **参数**:
 - `content`:要记的事实(自然语言)
@@ -144,9 +146,9 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 例:你说"我现在不用 Black 了,改用 Ruff" → LLM 先 `recall` 找到 id=37 "user uses Black" → 调 `forget(37, "user switched from Black to Ruff")`
 
-**mneme 内部**:Awake agent ReAct → `forget_archival` → 软删除(`is_deleted=true`)+ ops log
+**mneme 内部**:MCP tool 快速返回 `accepted`;后台 Awake agent ReAct → `forget_archival` → 软删除(`is_deleted=true`)+ ops log
 
-**返回**:`{"status": "ok", "fact_id": 37}`
+**返回**:`{"status": "accepted", "mode": "async", "operation": "forget"}`
 
 **软删不真删**:数据保留可恢复;search/recall 自动 filter `is_deleted=false`。
 
@@ -192,10 +194,10 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
 
 | MCP tool(Layer 1) | Awake 内部 @tool(Layer 2) | 关系 |
 |---|---|---|
-| `remember` | `search_archival` + `insert_archival_fact` | 1:多(LLM 决定怎么组合) |
+| `remember` | `search_archival` + `insert_archival_fact` | 1:多(LLM 决定怎么组合);MCP 层异步返回 |
 | `recall` | `load_core` + `search_archival` | 1:多 |
 | `list_memory` | `get_overview` | 1:1(简单 case) |
-| `forget` | `forget_archival` | 1:1(简单 case) |
+| `forget` | `forget_archival` | 1:1(简单 case);MCP 层异步返回 |
 
 **`forget` 完整四层调用链**(从你喊话到 SQL 落盘):
 
@@ -233,9 +235,14 @@ Claude Code → mneme MCP server:
               remember(content="user prefers 4-space indent",
                        tags=["preference"], confidence=3)
                                 │
-                                │ (mcp_server.py 收到 → run_awake 包装层)
+                                │ (mcp_server.py 收到 → schedule background task)
                                 ▼
                        mark_awake_activity()  ← 重置 idle 计时器
+                                │
+                                ├── 立刻返回 {status: "accepted", mode: "async"}
+                                │
+                                ▼
+                       后台任务调用 run_awake(command)
                                 │
                                 ▼
                        Awake Agent 启动 LangGraph ReAct
@@ -253,6 +260,7 @@ Claude Code → mneme MCP server:
                                 │
                                 │ 1. 调 阿里通义 embedding API,
                                 │    把 query 变成 1024 维向量
+                                │    (同文本走进程内 cache,避免 remember 查重/入库重复计算)
                                 │ 2. SQL: SELECT * FROM archival_facts
                                 │         ORDER BY embedding <=> :vec
                                 │         LIMIT 5
@@ -271,7 +279,8 @@ Claude Code → mneme MCP server:
                                 ▼
                        memory/store.py:insert_archival(...)
                                 │
-                                │ 1. 调 阿里通义 embedding → content 变向量
+                                │ 1. 取 content embedding
+                                │    (如果 search_archival 刚算过同文本,直接复用 cache)
                                 │ 2. INSERT INTO archival_facts
                                 │    (content, tags, confidence, embedding, ...)
                                 │ 3. INSERT INTO memory_ops_log
@@ -285,11 +294,15 @@ Claude Code → mneme MCP server:
                                 │   → "task 完成了,返回 summary"
                                 ▼
                        Awake Agent 返回:
-                       {final_message: "Stored as fact 142", step_count: 6}
+                       {status: "ok", final_message: "Stored as fact 142", step_count: 6}
                                 │
                                 ▼
-              ◄─── Claude Code 收到 → 给你回:"记下了。"
+              ◄─── 后台任务完成;如果失败写服务日志
 ```
+
+**异步写入的代价**:Claude Code 收到 `accepted` 时,事实不一定已经落库。刚 `remember` 后立刻 `recall` 可能暂时查不到,这是最终一致性取舍。读类工具 `recall` / `list_memory` 仍然同步,因为它们的结果会直接影响当前回答。
+
+**Awake 防卡死**:Awake ReAct 显式限制 `recursion_limit=8`,LLM 单步 `timeout=20s, max_retries=1`,外层 `asyncio.wait_for(..., 45s)` 兜底。极端情况下返回 `status="timeout"` 而不是让 Claude Code 一直等。
 
 > **embedding**(嵌入向量):把一段文本变成一串数字(mneme 用 1024 维,即 1024 个 float)。神经网络训出来的——意思相近的文本,向量在 1024 维空间也相近。
 >
@@ -558,10 +571,10 @@ COMMIT;
     updated_at = now()
     WHERE label = 'preferences';
   INSERT INTO memory_ops_log
-    (op_type='sleep_consolidate', target_kind='core', target_id='preferences', ...);
+    (op_type='sleep_resolve', target_kind='core', target_id='preferences', ...);
   ```
 
-**当前实现细节**:resolve 阶段现在写日志时暂时复用 `sleep_consolidate`。这是 MVP 的简化点,后续应该拆成独立 `sleep_resolve`,这样审计日志能一眼区分"合并重复事实"和"解决 core 冲突"。
+**当前实现细节**:resolve 阶段写独立 `sleep_resolve` 日志,这样审计日志能一眼区分"合并重复事实"和"解决 core 冲突"。
 
 **保守规则**:
 - 只修真正逻辑冲突,不要把风格差异当冲突
@@ -618,6 +631,9 @@ archival 层不强求全局一致,因为它保留的是"用户曾经表达过什
 ```sql
 BEGIN TRANSACTION;
 
+-- swap 会拿 ACCESS EXCLUSIVE LOCK;拿不到锁就快速失败,避免队头阻塞在线请求
+SELECT set_config('lock_timeout', '500ms', true);
+
 -- (a) 把 Awake 期间(snapshot 之后)新写的 archival 合进 staging
 --     Sleep 跑 5 min 期间 Awake 可能 INSERT 了几条新 archival 到 main
 INSERT INTO archival_facts_staging
@@ -665,6 +681,8 @@ COMMIT;
 > **staging table**(临时工作表):跟主表 schema 一样的副本。Sleep 在 staging 上改东西,改完一口气切换到 main。Sleep 跑期间 Awake 完全不受影响(它读写 main,看不到 staging)。
 
 > **atomic swap**(原子切换):用 transaction 包住 RENAME,要么三个表名全切完,要么一个都不切。中间不会出现"主表有名但里面是 staging 数据"这种半成品状态。
+
+> **lock_timeout**:`ALTER TABLE RENAME` 需要短暂拿 `ACCESS EXCLUSIVE LOCK`。Mneme 在 swap transaction 内设置 `lock_timeout=500ms`;如果当时撞上慢查询或长事务,本轮 swap 快速失败并清理 staging,不把在线读写堵在队头。
 
 > **ALTER TABLE RENAME**:Postgres 支持在 transaction 内改表名。MySQL 也支持,SQLite 不支持。
 
@@ -721,7 +739,7 @@ COMMIT;
 
 每次 memory 变更都写一行。
 
-- `op_type`(remember / sleep_promote / policy_violation 等)
+- `op_type`(remember / forget / sleep_consolidate / sleep_promote / sleep_demote / sleep_resolve / sleep_reflect / policy_violation 等)
 - `actor`(awake_agent / sleep_agent)
 - `before_value` / `after_value`
 - `reason`

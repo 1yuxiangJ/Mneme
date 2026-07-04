@@ -344,7 +344,7 @@ async def apply_resolutions(
         ), {"v": new_value, "l": block})
 
         session.add(MemoryOpsLog(
-            op_type="sleep_consolidate",  # resolve op_type collapsed under consolidate for MVP
+            op_type="sleep_resolve",
             actor=SLEEP_ACTOR,
             target_kind="core",
             target_id=block,

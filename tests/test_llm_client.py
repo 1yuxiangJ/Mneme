@@ -21,3 +21,35 @@ def test_dashscope_embedder_keeps_raw_string_input(monkeypatch):
     embedder = mneme.llm.client.get_embedder()
 
     assert embedder.check_embedding_ctx_length is False
+
+
+async def test_embed_text_reuses_cached_vector(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "test-deepseek-key")
+    monkeypatch.setenv("EMBED_API_KEY", "test-embed-key")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+asyncpg://test@localhost:5432/mneme"
+    )
+
+    import mneme.config
+    import mneme.llm.client
+
+    importlib.reload(mneme.config)
+    importlib.reload(mneme.llm.client)
+
+    calls = 0
+
+    class FakeEmbedder:
+        async def aembed_query(self, text: str) -> list[float]:
+            nonlocal calls
+            calls += 1
+            return [1.0, 2.0, 3.0]
+
+    monkeypatch.setattr(mneme.llm.client, "get_embedder", lambda: FakeEmbedder())
+    mneme.llm.client.clear_embedding_cache()
+
+    first = await mneme.llm.client.embed_text("same text")
+    second = await mneme.llm.client.embed_text("same text")
+
+    assert first == [1.0, 2.0, 3.0]
+    assert second == [1.0, 2.0, 3.0]
+    assert calls == 1

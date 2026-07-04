@@ -72,7 +72,7 @@ CREATE INDEX IF NOT EXISTS idx_archival_active
 -- =============================================================
 CREATE TABLE IF NOT EXISTS memory_ops_log (
     id            BIGSERIAL PRIMARY KEY,
-    op_type       TEXT NOT NULL,  -- remember / recall / forget / sleep_consolidate / sleep_promote / sleep_demote / sleep_reflect / policy_violation
+    op_type       TEXT NOT NULL,  -- remember / recall / forget / sleep_consolidate / sleep_promote / sleep_demote / sleep_resolve / sleep_reflect / policy_violation
     actor         TEXT NOT NULL,  -- 'awake_agent' / 'sleep_agent'
     target_kind   TEXT,           -- 'core' / 'archival'
     target_id     TEXT,           -- core label or archival id (cast to text)

@@ -31,6 +31,8 @@ from datetime import UTC, datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mneme.config import settings
+
 # Tables that participate in staging.
 _STAGED_TABLES = ("core_blocks", "archival_facts")
 _ARCHIVAL_ID_SEQUENCE = "archival_facts_id_seq"
@@ -102,6 +104,11 @@ async def atomic_swap(session: AsyncSession, snapshot_ts: datetime) -> None:
         snapshot_ts: timestamp returned by snapshot_to_staging().
     """
     # All of this in one transaction.
+    await session.execute(
+        text("SELECT set_config('lock_timeout', :lock_timeout, true)"),
+        {"lock_timeout": f"{settings.sleep_swap_lock_timeout_ms}ms"},
+    )
+
     # Step a: merge new archival rows from main → staging (Sleep didn't see them).
     await session.execute(text(
         """

@@ -8,12 +8,17 @@ POLICY (Letta read-only primary): this agent is READ-ONLY on core_blocks.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from langgraph.prebuilt import create_react_agent
 
 from mneme.awake.tools import AWAKE_TOOLS
+from mneme.config import settings
 from mneme.llm.client import get_chat_llm
+
+logger = logging.getLogger("mneme.awake")
 
 SYSTEM_PROMPT = """You are mneme's Awake agent, the responsive layer of a
 user-model memory service for Claude Code.
@@ -59,7 +64,11 @@ def get_awake_agent() -> Any:
     """Lazy singleton — build the LangGraph ReAct agent once."""
     global _agent
     if _agent is None:
-        llm = get_chat_llm(temperature=0.0)
+        llm = get_chat_llm(
+            temperature=0.0,
+            timeout=settings.awake_llm_timeout_seconds,
+            max_retries=settings.awake_llm_max_retries,
+        )
         _agent = create_react_agent(llm, AWAKE_TOOLS, prompt=SYSTEM_PROMPT)
     return _agent
 
@@ -73,10 +82,32 @@ async def run_awake(command: str) -> dict[str, Any]:
     Returns dict with final_message and step_count.
     """
     agent = get_awake_agent()
-    result = await agent.ainvoke({"messages": [("user", command)]})
+    try:
+        result = await asyncio.wait_for(
+            agent.ainvoke(
+                {"messages": [("user", command)]},
+                config={"recursion_limit": settings.awake_react_recursion_limit},
+            ),
+            timeout=settings.awake_overall_timeout_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            "awake command timed out after %.1fs: %s",
+            settings.awake_overall_timeout_seconds,
+            command[:200],
+        )
+        return {
+            "status": "timeout",
+            "final_message": (
+                "Awake agent timed out before completing the request; "
+                "please retry or inspect service logs."
+            ),
+            "step_count": 0,
+        }
     messages = result["messages"]
     final = messages[-1]
     return {
+        "status": "ok",
         "final_message": getattr(final, "content", str(final)),
         "step_count": len(messages),
     }

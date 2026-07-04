@@ -32,6 +32,7 @@ OpType = Literal[
     "sleep_consolidate",
     "sleep_promote",
     "sleep_demote",
+    "sleep_resolve",
     "sleep_reflect",
     "policy_violation",
 ]

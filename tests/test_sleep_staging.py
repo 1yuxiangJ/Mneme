@@ -127,6 +127,26 @@ async def test_atomic_swap_merges_new_archival_during_cycle(integration_session)
 
 
 @pytest.mark.asyncio
+async def test_apply_resolutions_logs_sleep_resolve(integration_session):
+    """Resolve should have its own op_type instead of being collapsed into consolidate."""
+    from mneme.sleep.tools import apply_resolutions
+
+    await snapshot_to_staging(integration_session)
+
+    await apply_resolutions(integration_session, [{
+        "fix_block": "preferences",
+        "new_block_value": "User prefers direct, concrete engineering explanations.",
+        "reason": "remove contradiction with habits block",
+    }])
+
+    op_type = (await integration_session.execute(text(
+        "SELECT op_type FROM memory_ops_log WHERE target_id = 'preferences'"
+    ))).scalar_one()
+
+    assert op_type == "sleep_resolve"
+
+
+@pytest.mark.asyncio
 async def test_snapshot_repairs_missing_archival_id_sequence(integration_session):
     """Sleep should recover if a previous swap left archival id default missing."""
     await integration_session.execute(text(

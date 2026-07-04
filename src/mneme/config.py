@@ -36,6 +36,16 @@ class Settings(BaseSettings):
     sleep_max_wall_time_seconds: int = 300
     sleep_max_tokens: int = 50000
     sleep_min_archival_count: int = 10
+    sleep_swap_lock_timeout_ms: int = 500
+
+    # ----- Awake agent guardrails -----
+    awake_react_recursion_limit: int = 8
+    awake_llm_timeout_seconds: float = 20.0
+    awake_llm_max_retries: int = 1
+    awake_overall_timeout_seconds: float = 45.0
+
+    # ----- Embedding cache -----
+    embedding_cache_size: int = 256
 
     # ----- Logging -----
     log_level: str = "INFO"
