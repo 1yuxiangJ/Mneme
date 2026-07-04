@@ -19,9 +19,9 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mneme.db.models import MemoryOpsLog
+from mneme.memory.store import Actor, MemoryOpDraft
 
-SLEEP_ACTOR = "sleep_agent"
+SLEEP_ACTOR: Actor = "sleep_agent"
 
 
 def _vector_literal(value: Any) -> str:
@@ -218,8 +218,9 @@ async def get_stale_candidates(
 async def apply_consolidation(
     session: AsyncSession,
     actions: list[dict[str, Any]],
-) -> None:
+) -> list[MemoryOpDraft]:
     """Apply LLM-decided MERGE actions to staging."""
+    pending_ops: list[MemoryOpDraft] = []
     for act in actions:
         if act.get("decision") != "MERGE":
             continue
@@ -241,23 +242,25 @@ async def apply_consolidation(
                 "SET is_deleted = TRUE WHERE id = ANY(:ids)"
             ), {"ids": discarded_ids})
 
-        session.add(MemoryOpsLog(
-            op_type="sleep_consolidate",
-            actor=SLEEP_ACTOR,
-            target_kind="archival",
-            target_id=str(kept_id),
-            before_value=None,
-            after_value=merged_content,
-            reason=f"Merged {len(discarded_ids)} duplicates; {reason}",
-        ))
+        pending_ops.append({
+            "op_type": "sleep_consolidate",
+            "actor": SLEEP_ACTOR,
+            "target_kind": "archival",
+            "target_id": str(kept_id),
+            "before_value": None,
+            "after_value": merged_content,
+            "reason": f"Merged {len(discarded_ids)} duplicates; {reason}",
+        })
     await session.commit()
+    return pending_ops
 
 
 async def apply_promotions(
     session: AsyncSession,
     actions: list[dict[str, Any]],
-) -> None:
+) -> list[MemoryOpDraft]:
     """Apply LLM-decided PROMOTE actions to core_blocks_staging."""
+    pending_ops: list[MemoryOpDraft] = []
     for act in actions:
         if act.get("decision") != "PROMOTE":
             continue
@@ -278,23 +281,25 @@ async def apply_promotions(
             "WHERE label = :l"
         ), {"v": new_value, "l": target})
 
-        session.add(MemoryOpsLog(
-            op_type="sleep_promote",
-            actor=SLEEP_ACTOR,
-            target_kind="core",
-            target_id=target,
-            before_value=cur,
-            after_value=new_value,
-            reason=f"Promoted from archival id={fact_id}: {reason}",
-        ))
+        pending_ops.append({
+            "op_type": "sleep_promote",
+            "actor": SLEEP_ACTOR,
+            "target_kind": "core",
+            "target_id": target,
+            "before_value": cur,
+            "after_value": new_value,
+            "reason": f"Promoted from archival id={fact_id}: {reason}",
+        })
     await session.commit()
+    return pending_ops
 
 
 async def apply_demotions(
     session: AsyncSession,
     actions: list[dict[str, Any]],
-) -> None:
+) -> list[MemoryOpDraft]:
     """Soft-delete stale archival in staging."""
+    pending_ops: list[MemoryOpDraft] = []
     for act in actions:
         if act.get("decision") != "FORGET":
             continue
@@ -310,23 +315,25 @@ async def apply_demotions(
             "SET is_deleted = TRUE WHERE id = :i"
         ), {"i": fact_id})
 
-        session.add(MemoryOpsLog(
-            op_type="sleep_demote",
-            actor=SLEEP_ACTOR,
-            target_kind="archival",
-            target_id=str(fact_id),
-            before_value=cur,
-            after_value=None,
-            reason=reason,
-        ))
+        pending_ops.append({
+            "op_type": "sleep_demote",
+            "actor": SLEEP_ACTOR,
+            "target_kind": "archival",
+            "target_id": str(fact_id),
+            "before_value": cur,
+            "after_value": None,
+            "reason": reason,
+        })
     await session.commit()
+    return pending_ops
 
 
 async def apply_resolutions(
     session: AsyncSession,
     contradictions: list[dict[str, Any]],
-) -> None:
+) -> list[MemoryOpDraft]:
     """Apply LLM-decided contradiction fixes to core_blocks_staging."""
+    pending_ops: list[MemoryOpDraft] = []
     for c in contradictions:
         block = c["fix_block"]
         new_value = c["new_block_value"]
@@ -343,30 +350,30 @@ async def apply_resolutions(
             "WHERE label = :l"
         ), {"v": new_value, "l": block})
 
-        session.add(MemoryOpsLog(
-            op_type="sleep_resolve",
-            actor=SLEEP_ACTOR,
-            target_kind="core",
-            target_id=block,
-            before_value=cur,
-            after_value=new_value,
-            reason=f"Resolved contradiction: {reason}",
-        ))
+        pending_ops.append({
+            "op_type": "sleep_resolve",
+            "actor": SLEEP_ACTOR,
+            "target_kind": "core",
+            "target_id": block,
+            "before_value": cur,
+            "after_value": new_value,
+            "reason": f"Resolved contradiction: {reason}",
+        })
     await session.commit()
+    return pending_ops
 
 
-async def log_reflection(session: AsyncSession, text_value: str) -> None:
-    """Persist the REFLECT phase output to memory_ops_log."""
-    session.add(MemoryOpsLog(
-        op_type="sleep_reflect",
-        actor=SLEEP_ACTOR,
-        target_kind=None,
-        target_id=None,
-        before_value=None,
-        after_value=text_value,
-        reason="periodic reflection snapshot",
-    ))
-    await session.commit()
+def draft_reflection_log(text_value: str) -> MemoryOpDraft:
+    """Build the REFLECT phase audit log draft."""
+    return {
+        "op_type": "sleep_reflect",
+        "actor": SLEEP_ACTOR,
+        "target_kind": None,
+        "target_id": None,
+        "before_value": None,
+        "after_value": text_value,
+        "reason": "periodic reflection snapshot",
+    }
 
 
 # =====================================================================

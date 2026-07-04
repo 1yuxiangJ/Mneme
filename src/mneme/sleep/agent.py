@@ -34,6 +34,7 @@ from sqlalchemy import text as sql_text
 from mneme.config import settings
 from mneme.db.models import get_sessionmaker
 from mneme.llm.client import get_chat_llm
+from mneme.memory.store import MemoryOpDraft
 from mneme.sleep import prompts, staging, tools
 
 logger = logging.getLogger("mneme.sleep")
@@ -51,6 +52,7 @@ class SleepState(TypedDict, total=False):
     demote_actions: list[Any]
     contradictions: list[Any]
     reflection_text: str
+    pending_ops: list[MemoryOpDraft]
     aborted: bool
     abort_reason: str | None
 
@@ -95,6 +97,18 @@ def _safe_parse_json(raw: str) -> dict[str, Any]:
 
 def _budget_ok(state: SleepState) -> bool:
     return state.get("deadline_ts", float("inf")) > time.monotonic()
+
+
+def _append_pending_ops(
+    state: SleepState,
+    pending_ops: list[MemoryOpDraft],
+) -> SleepState:
+    if not pending_ops:
+        return state
+    return {
+        **state,
+        "pending_ops": [*state.get("pending_ops", []), *pending_ops],
+    }
 
 
 # ---------------------------------------------------------------
@@ -154,9 +168,12 @@ async def node_consolidate(state: SleepState) -> SleepState:
         )
         decision = await _llm_json(rendered)
         actions = decision.get("actions", [])
-        await tools.apply_consolidation(session, actions)
+        pending_ops = await tools.apply_consolidation(session, actions)
     logger.info("consolidate: %d actions", len(actions))
-    return {**state, "consolidate_actions": actions}
+    return _append_pending_ops(
+        {**state, "consolidate_actions": actions},
+        pending_ops,
+    )
 
 
 async def node_promote(state: SleepState) -> SleepState:
@@ -179,9 +196,12 @@ async def node_promote(state: SleepState) -> SleepState:
         )
         decision = await _llm_json(rendered)
         actions = decision.get("actions", [])
-        await tools.apply_promotions(session, actions)
+        pending_ops = await tools.apply_promotions(session, actions)
     logger.info("promote: %d actions", len(actions))
-    return {**state, "promote_actions": actions}
+    return _append_pending_ops(
+        {**state, "promote_actions": actions},
+        pending_ops,
+    )
 
 
 async def node_demote(state: SleepState) -> SleepState:
@@ -202,9 +222,12 @@ async def node_demote(state: SleepState) -> SleepState:
         )
         decision = await _llm_json(rendered)
         actions = decision.get("actions", [])
-        await tools.apply_demotions(session, actions)
+        pending_ops = await tools.apply_demotions(session, actions)
     logger.info("demote: %d actions", len(actions))
-    return {**state, "demote_actions": actions}
+    return _append_pending_ops(
+        {**state, "demote_actions": actions},
+        pending_ops,
+    )
 
 
 async def node_resolve(state: SleepState) -> SleepState:
@@ -236,9 +259,12 @@ async def node_resolve(state: SleepState) -> SleepState:
         )
         decision = await _llm_json(rendered)
         contradictions = decision.get("contradictions", [])
-        await tools.apply_resolutions(session, contradictions)
+        pending_ops = await tools.apply_resolutions(session, contradictions)
     logger.info("resolve: %d contradictions", len(contradictions))
-    return {**state, "contradictions": contradictions}
+    return _append_pending_ops(
+        {**state, "contradictions": contradictions},
+        pending_ops,
+    )
 
 
 async def node_reflect(state: SleepState) -> SleepState:
@@ -271,9 +297,12 @@ async def node_reflect(state: SleepState) -> SleepState:
         reflection_text = _content_to_text(
             resp.content if hasattr(resp, "content") else resp
         )
-        await tools.log_reflection(session, reflection_text)
+        pending_ops = [tools.draft_reflection_log(reflection_text)]
     logger.info("reflect: snapshot logged")
-    return {**state, "reflection_text": reflection_text}
+    return _append_pending_ops(
+        {**state, "reflection_text": reflection_text},
+        pending_ops,
+    )
 
 
 async def node_swap(state: SleepState) -> SleepState:
@@ -289,7 +318,7 @@ async def node_swap(state: SleepState) -> SleepState:
             logger.warning("no snapshot ts; cleaning up staging")
             await staging.cleanup_staging(session)
             return state
-        await staging.atomic_swap(session, ts)
+        await staging.atomic_swap(session, ts, pending_ops=state.get("pending_ops", []))
         logger.info("atomic_swap complete")
     return state
 

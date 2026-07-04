@@ -425,8 +425,8 @@ COMMIT;
     SET content='user prefers 4-space indentation'
     WHERE id = 88;
   UPDATE archival_facts_staging SET is_deleted = TRUE WHERE id = 12;
-  INSERT INTO memory_ops_log (op_type='sleep_consolidate', ...);
   ```
+  同时生成一条 `pending_ops` 草稿:`op_type='sleep_consolidate'`。这条日志暂时只放在 StateGraph state 里,不写主 `memory_ops_log`。
 
 ---
 
@@ -469,8 +469,7 @@ COMMIT;
     last_writer = 'sleep_agent',
     updated_at = now()
     WHERE label = 'preferences';
-  INSERT INTO memory_ops_log
-    (op_type='sleep_promote', target_id='preferences', ...);
+  -- 生成 pending op: op_type='sleep_promote', target_id='preferences'
   -- 同样处理 habits;SKIP 158
   ```
 
@@ -487,7 +486,7 @@ COMMIT;
 2. 把候选喂 LLM `DEMOTE_PROMPT`
 3. LLM 对每条判断 `FORGET` / `KEEP`
 4. 只对 `FORGET` 的 fact 在 staging 表里 `is_deleted = TRUE`
-5. 写 `memory_ops_log(op_type='sleep_demote')`
+5. 生成 `pending_ops(op_type='sleep_demote')`
 
 **例子**:
 - 候选 archival:
@@ -511,8 +510,7 @@ COMMIT;
   UPDATE archival_facts_staging
     SET is_deleted = TRUE
     WHERE id = 31;
-  INSERT INTO memory_ops_log
-    (op_type='sleep_demote', target_kind='archival', target_id='31', ...);
+  -- 生成 pending op: op_type='sleep_demote', target_kind='archival', target_id='31'
   ```
 
 **保守规则**:
@@ -537,7 +535,7 @@ COMMIT;
 3. 喂 LLM `RESOLVE_PROMPT`,要求找 block 内部或 block 之间的真正逻辑冲突
 4. LLM 输出需要修哪个 block,以及"完整的新 block value"
 5. 应用到 `core_blocks_staging`,`version + 1`,`last_writer='sleep_agent'`
-6. 写 `memory_ops_log`
+6. 生成 `pending_ops(op_type='sleep_resolve')`
 
 **例子**:
 - 当前 core blocks 片段:
@@ -570,11 +568,10 @@ COMMIT;
     last_writer = 'sleep_agent',
     updated_at = now()
     WHERE label = 'preferences';
-  INSERT INTO memory_ops_log
-    (op_type='sleep_resolve', target_kind='core', target_id='preferences', ...);
+  -- 生成 pending op: op_type='sleep_resolve', target_kind='core', target_id='preferences'
   ```
 
-**当前实现细节**:resolve 阶段写独立 `sleep_resolve` 日志,这样审计日志能一眼区分"合并重复事实"和"解决 core 冲突"。
+**当前实现细节**:resolve 阶段生成独立 `sleep_resolve` pending op。swap 成功后才写入主 `memory_ops_log`,这样审计日志能一眼区分"合并重复事实"和"解决 core 冲突"。
 
 **保守规则**:
 - 只修真正逻辑冲突,不要把风格差异当冲突
@@ -615,7 +612,7 @@ archival 层不强求全局一致,因为它保留的是"用户曾经表达过什
 **做啥**:
 1. 拿(已被 promote 改过的)core_blocks + 高 conf archival 5 条
 2. 喂 LLM `REFLECT_PROMPT`,要求 2-4 句话
-3. INSERT 到 memory_ops_log(`op_type='sleep_reflect'`)
+3. 生成 `pending_ops(op_type='sleep_reflect')`
 
 **LLM 输出例**:
 > "User is a Java backend intern at Thunderbit, job-hunting for Java backend and AI agent roles. Prefers Ruff and 4-space indent. Writes tests before implementation. Recently learned to avoid nested asyncio.gather in for-loops."
@@ -651,6 +648,13 @@ ALTER TABLE archival_facts_tmp_swap RENAME TO archival_facts_staging;
 TRUNCATE archival_facts_staging;
 TRUNCATE core_blocks_staging;
 
+-- (d) 把本轮 Sleep 的 pending_ops 写入主审计日志
+--     和 swap 在同一个 transaction 里:主表切换成功,日志才成功
+INSERT INTO memory_ops_log
+  (op_type, actor, target_kind, target_id, before_value, after_value, reason)
+VALUES
+  (...pending sleep ops...);
+
 COMMIT;
 ```
 
@@ -683,6 +687,8 @@ COMMIT;
 > **atomic swap**(原子切换):用 transaction 包住 RENAME,要么三个表名全切完,要么一个都不切。中间不会出现"主表有名但里面是 staging 数据"这种半成品状态。
 
 > **lock_timeout**:`ALTER TABLE RENAME` 需要短暂拿 `ACCESS EXCLUSIVE LOCK`。Mneme 在 swap transaction 内设置 `lock_timeout=500ms`;如果当时撞上慢查询或长事务,本轮 swap 快速失败并清理 staging,不把在线读写堵在队头。
+
+> **pending_ops**:Sleep phase 对 staging 的每次修改都会生成一条日志草稿,暂存在 LangGraph state 里。只有 `atomic_swap` 成功时,这些草稿才会在同一个 transaction 内写入主 `memory_ops_log`。如果 swap 失败,主表不变,日志也不写,避免出现"日志说生效但主表没更新"的审计歧义。
 
 > **ALTER TABLE RENAME**:Postgres 支持在 transaction 内改表名。MySQL 也支持,SQLite 不支持。
 

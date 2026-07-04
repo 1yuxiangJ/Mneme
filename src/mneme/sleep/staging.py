@@ -32,6 +32,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mneme.config import settings
+from mneme.db.models import MemoryOpsLog
+from mneme.memory.store import MemoryOpDraft
 
 # Tables that participate in staging.
 _STAGED_TABLES = ("core_blocks", "archival_facts")
@@ -97,11 +99,16 @@ async def snapshot_to_staging(session: AsyncSession) -> datetime:
     return snapshot_ts
 
 
-async def atomic_swap(session: AsyncSession, snapshot_ts: datetime) -> None:
+async def atomic_swap(
+    session: AsyncSession,
+    snapshot_ts: datetime,
+    pending_ops: list[MemoryOpDraft] | None = None,
+) -> None:
     """Atomically swap staging ↔ main.
 
     Args:
         snapshot_ts: timestamp returned by snapshot_to_staging().
+        pending_ops: Sleep audit log rows to flush only if the swap commits.
     """
     # All of this in one transaction.
     await session.execute(
@@ -132,6 +139,9 @@ async def atomic_swap(session: AsyncSession, snapshot_ts: datetime) -> None:
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
         await session.execute(text(f"TRUNCATE {staging}"))
+
+    if pending_ops:
+        session.add_all(MemoryOpsLog(**op) for op in pending_ops)
 
     await session.commit()
 

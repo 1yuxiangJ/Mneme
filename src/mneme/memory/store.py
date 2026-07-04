@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypedDict
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -36,6 +36,23 @@ OpType = Literal[
     "sleep_reflect",
     "policy_violation",
 ]
+
+
+class MemoryOpDraft(TypedDict):
+    """Uncommitted memory_ops_log row.
+
+    Sleep phases keep these in StateGraph state and flush them only inside the
+    final atomic swap transaction, so failed sleep cycles do not pollute the
+    committed audit log.
+    """
+
+    op_type: OpType
+    actor: Actor
+    target_kind: str | None
+    target_id: str | None
+    before_value: str | None
+    after_value: str | None
+    reason: str | None
 
 
 # -------------------------------------------------------------

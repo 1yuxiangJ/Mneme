@@ -127,22 +127,29 @@ async def test_atomic_swap_merges_new_archival_during_cycle(integration_session)
 
 
 @pytest.mark.asyncio
-async def test_apply_resolutions_logs_sleep_resolve(integration_session):
-    """Resolve should have its own op_type instead of being collapsed into consolidate."""
+async def test_sleep_logs_are_pending_until_swap_commits(integration_session):
+    """Sleep phase logs should only enter memory_ops_log after swap succeeds."""
     from mneme.sleep.tools import apply_resolutions
 
-    await snapshot_to_staging(integration_session)
+    snapshot_ts = await snapshot_to_staging(integration_session)
 
-    await apply_resolutions(integration_session, [{
+    pending_ops = await apply_resolutions(integration_session, [{
         "fix_block": "preferences",
         "new_block_value": "User prefers direct, concrete engineering explanations.",
         "reason": "remove contradiction with habits block",
     }])
 
+    before_swap = (await integration_session.execute(text(
+        "SELECT count(*) FROM memory_ops_log"
+    ))).scalar_one()
+
+    await atomic_swap(integration_session, snapshot_ts, pending_ops=pending_ops)
+
     op_type = (await integration_session.execute(text(
         "SELECT op_type FROM memory_ops_log WHERE target_id = 'preferences'"
     ))).scalar_one()
 
+    assert before_swap == 0
     assert op_type == "sleep_resolve"
 
 
