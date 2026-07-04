@@ -571,6 +571,28 @@ COMMIT;
 
 → `state["contradictions"] = contradictions`
 
+**为什么 resolve 只处理 core 冲突,不直接处理 archival 冲突?**
+
+因为两层 memory 的一致性要求不一样:
+
+| 冲突位置 | 当前怎么处理 | 原因 |
+|---|---|---|
+| archival vs archival | 不由 `resolve` 直接处理,可能被 `consolidate` / `demote` / `promote` 间接处理 | archival 是原始事实仓库,允许保留事实演化痕迹;看似冲突可能只是时间变化或语境不同 |
+| archival vs core | 主要在 `promote` 时综合处理 | promote 会同时看候选 archival 和当前 core,可以把新事实写成更准确的 core 表达 |
+| core vs core | 由 `resolve` 主动审计 | core 是 Claude Code 会直接读取的用户画像,如果互相打架会直接污染回答 |
+| core block 内部自相矛盾 | 由 `resolve` 主动审计 | 没有新 archival 触发同一 block 更新时,这种存量矛盾可能长期残留 |
+
+换句话说:
+
+- `consolidate`:压缩 archival 里的重复事实
+- `demote`:软删 archival 里的低价值旧事实
+- `promote`:把 archival 里的稳定事实综合进 core
+- `resolve`:检查 core 自己是否自洽
+
+archival 层不强求全局一致,因为它保留的是"用户曾经表达过什么";core 层必须自洽,因为它代表"系统当前相信的用户画像"。
+
+后续如果要专门处理 archival 冲突,可以新增 `reconcile_archival` phase,做 supersede 标记、降低旧 fact confidence、补时间范围,而不是简单删除其中一条。
+
 ---
 
 ### Node 7: reflect ← 输出一段 "about user" 摘要
