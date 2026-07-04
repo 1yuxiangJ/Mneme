@@ -463,15 +463,113 @@ COMMIT;
 
 ---
 
-### Node 5: demote(不在 plan 里 → 跳过)
+### Node 5: demote(在 plan 里 → 执行;不在 plan 里 → 跳过)
 
-LLM 这次 plan 没选 `demote`(可能没足够 stale 的 fact)。Node 入口:`if "demote" not in state["plan"]: return state` → pass through。
+**为啥**:archival 是零散事实仓库,只增不清会越来越吵。Sleep 需要把"长期没被用到 + 低 confidence"的事实软删,降低 recall 噪音和后续 Sleep 的处理成本。
+
+**注意**:`demote` 不是删 core block。core block 是高层用户画像,只有 `promote` / `resolve` 会改 core;`demote` 当前只处理 `archival_facts_staging` 里的低价值 fact。
+
+**做啥**:
+1. SQL 找 stale candidates:长期没被 recall 用过、confidence 低、还没被软删的 archival
+2. 把候选喂 LLM `DEMOTE_PROMPT`
+3. LLM 对每条判断 `FORGET` / `KEEP`
+4. 只对 `FORGET` 的 fact 在 staging 表里 `is_deleted = TRUE`
+5. 写 `memory_ops_log(op_type='sleep_demote')`
+
+**例子**:
+- 候选 archival:
+  ```
+  [id=31, confidence=1, last_used_at=120 days ago, "user might try Flask someday"]
+  [id=44, confidence=2, last_used_at=110 days ago, "user once asked about Kotlin syntax"]
+  [id=88, confidence=3, last_used_at=140 days ago, "user prefers 4-space indentation"]
+  ```
+- LLM 决定:
+  ```json
+  {
+    "actions": [
+      {"fact_id": 31, "decision": "FORGET", "reason": "low-confidence tentative interest, never reused"},
+      {"fact_id": 44, "decision": "KEEP", "reason": "could reflect Java ecosystem interest"},
+      {"fact_id": 88, "decision": "KEEP", "reason": "confidence=3 facts must not be forgotten by demote"}
+    ]
+  }
+  ```
+- 应用到 staging:
+  ```sql
+  UPDATE archival_facts_staging
+    SET is_deleted = TRUE
+    WHERE id = 31;
+  INSERT INTO memory_ops_log
+    (op_type='sleep_demote', target_kind='archival', target_id='31', ...);
+  ```
+
+**保守规则**:
+- `confidence=3` 永远不由 demote 删除
+- 有可能解释 core block 的 fact 不删
+- 不确定就 `KEEP`
+- 删除是软删,不是物理删除;`inspect_memory.py --include-deleted` 还能看见
+
+→ `state["demote_actions"] = actions`
 
 ---
 
-### Node 6: resolve(不在 plan 里 → 跳过)
+### Node 6: resolve(在 plan 里 → 执行;不在 plan 里 → 跳过)
 
-同上。
+**为啥**:长期记忆会出现冲突。比如早期 core 写"用户喜欢详细解释",后面又沉淀出"用户不喜欢冗长解释"。这两句话不一定真的矛盾,但如果 core block 里表达得互相打架,Claude Code 后续就会拿到混乱的用户画像。
+
+**resolve 解决的是 core 层的语义冲突**,不是简单 duplicate。duplicate 归 `consolidate`,低价值遗忘归 `demote`,稳定偏好升级归 `promote`。
+
+**做啥**:
+1. 读取当前 5 个 `core_blocks_staging`
+2. 读取最近 20 条 `memory_ops_log`,作为上下文
+3. 喂 LLM `RESOLVE_PROMPT`,要求找 block 内部或 block 之间的真正逻辑冲突
+4. LLM 输出需要修哪个 block,以及"完整的新 block value"
+5. 应用到 `core_blocks_staging`,`version + 1`,`last_writer='sleep_agent'`
+6. 写 `memory_ops_log`
+
+**例子**:
+- 当前 core blocks 片段:
+  ```text
+  preferences:
+  User prefers very detailed explanations and likes broad conceptual background.
+
+  habits:
+  User dislikes vague or long-winded answers; prefers direct, concrete engineering explanations.
+  ```
+- LLM 判断:
+  ```json
+  {
+    "contradictions": [
+      {
+        "blocks_involved": ["preferences", "habits"],
+        "description": "preferences says broad detailed explanations, habits says direct concrete answers",
+        "fix_block": "preferences",
+        "new_block_value": "User prefers direct, concrete engineering explanations. Detail is useful when it clarifies trade-offs or implementation steps, but vague long-winded background should be avoided.",
+        "reason": "newer repeated preference clarifies that detail is welcome only when actionable"
+      }
+    ]
+  }
+  ```
+- 应用到 staging:
+  ```sql
+  UPDATE core_blocks_staging SET
+    value = 'User prefers direct, concrete engineering explanations...',
+    version = version + 1,
+    last_writer = 'sleep_agent',
+    updated_at = now()
+    WHERE label = 'preferences';
+  INSERT INTO memory_ops_log
+    (op_type='sleep_consolidate', target_kind='core', target_id='preferences', ...);
+  ```
+
+**当前实现细节**:resolve 阶段现在写日志时暂时复用 `sleep_consolidate`。这是 MVP 的简化点,后续应该拆成独立 `sleep_resolve`,这样审计日志能一眼区分"合并重复事实"和"解决 core 冲突"。
+
+**保守规则**:
+- 只修真正逻辑冲突,不要把风格差异当冲突
+- `new_block_value` 必须是完整 block,不是 diff
+- 只能 Sleep 写 core,Awake 没有这条路径
+- 不确定就输出 `{"contradictions": []}`
+
+→ `state["contradictions"] = contradictions`
 
 ---
 
