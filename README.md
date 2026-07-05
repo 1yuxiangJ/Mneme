@@ -78,12 +78,14 @@ bash scripts/setup.sh           # 装 PG/pgvector/uv/建库/schema
 $EDITOR .env                    # 填 DEEPSEEK_API_KEY / EMBED_API_KEY
 /Users/mac/.local/bin/uv run python -m mneme  # 终端 A:启动 service
 curl http://127.0.0.1:8000/health  # → {"status": "ok"}
-claude                          # 终端 B:启动 Claude Code + Mneme MCP
+claude                          # 终端 B:任意目录启动 Claude Code + Mneme MCP
 ```
 
 接入 Claude Code:看 `docs/QUICKSTART.md` §5。当前本机 `.zshrc` 已配置透明
 `claude()` 函数,会自动绕过本地 MCP 的代理问题;`scripts/claude-mneme.sh`
-保留为 fallback。
+保留为 fallback。当前本机也已把 `mneme` 注册到 Claude Code user-scope MCP
+config,所以 Claude Code 客户端不需要 `cd /Users/mac/dream`;只有启动 Mneme
+service 时需要在项目目录运行。
 
 录像 demo 剧本:`docs/DEMO.md`(5 个场景)。
 

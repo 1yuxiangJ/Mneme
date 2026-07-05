@@ -24,7 +24,6 @@ curl -sS http://127.0.0.1:8000/health
 ## 2. Claude Code MCP
 
 ```bash
-cd /Users/mac/dream
 claude mcp list
 ```
 
@@ -33,6 +32,8 @@ claude mcp list
 ```text
 mneme: http://127.0.0.1:8000/mcp (HTTP) - ✔ Connected
 ```
+
+说明:当前本机已注册 Claude Code user-scope MCP 配置,所以客户端不需要 `cd /Users/mac/dream`。只有启动 Mneme service 时需要进入项目目录。
 
 ## 3. Demo Data
 

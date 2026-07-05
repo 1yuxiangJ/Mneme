@@ -98,7 +98,20 @@ curl http://127.0.0.1:8000/health
 claude mcp add --transport http mneme --scope project http://127.0.0.1:8000/mcp
 ```
 
-验证 MCP 连接:
+当前本机额外注册了 user-scoped MCP 配置,所以 Claude Code 客户端可以在任意目录直接使用 Mneme:
+
+```bash
+claude mcp add --transport http --scope user mneme http://127.0.0.1:8000/mcp
+```
+
+两份配置的职责不同:
+
+| 配置 | 位置 | 作用 |
+|---|---|---|
+| project scope | `/Users/mac/dream/.mcp.json` | 项目自描述,别人 clone 后知道怎么接 Mneme |
+| user scope | `/Users/mac/.claude.json` | 本机任意目录启动 `claude` 都能看到 Mneme |
+
+验证 MCP 连接(不需要在 dream 目录):
 
 ```bash
 claude mcp list
@@ -108,8 +121,14 @@ claude mcp list
 启动 Claude Code:
 
 ```bash
-cd /Users/mac/dream
 claude
+```
+
+注意:这只解决 **Claude Code 客户端任意目录可用**。Mneme service 本身仍然需要先启动:
+
+```bash
+cd /Users/mac/dream
+/Users/mac/.local/bin/uv run python -m mneme
 ```
 
 为什么现在可以直接 `claude`:
@@ -124,7 +143,7 @@ claude
 scripts/claude-mneme.sh 保留为 fallback。
 ```
 
-首次进入项目目录时批准 `.mcp.json` 里的 `mneme` server。批准后可以在 Claude Code 里说:
+批准 `mneme` server 后,可以在 Claude Code 里说:
 
 ```text
 调用 mneme 的 list_memory，看看当前记忆。

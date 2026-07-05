@@ -58,6 +58,19 @@ Project-scoped MCP config is present:
 /Users/mac/dream/.mcp.json
 ```
 
+Current local machine also has user-scoped MCP config:
+
+```text
+/Users/mac/.claude.json
+```
+
+Observed user-scope verification from `/Users/mac`:
+
+```bash
+claude mcp list
+# mneme: http://127.0.0.1:8000/mcp (HTTP) - ✔ Connected
+```
+
 Claude Code recognizes the server:
 
 ```bash
@@ -86,7 +99,7 @@ Type: http
 URL: http://127.0.0.1:8000/mcp
 ```
 
-This means the MCP config path and format are correct. The remaining MCP step is to run `claude` from the project directory and approve the project-scoped server.
+This means both config paths are usable. On this machine, user-scope config lets Claude Code use Mneme from any directory. The project-scoped `.mcp.json` remains useful for repository portability.
 
 ## Current Machine Status
 
@@ -205,11 +218,10 @@ Expected:
 After the service is running:
 
 ```bash
-cd /Users/mac/dream
 claude
 ```
 
-Approve the project-scoped `.mcp.json` server when prompted.
+Approve the `mneme` server when prompted. Current local user-scope config means this does not require starting Claude Code from `/Users/mac/dream`.
 
 Then verify inside Claude Code:
 
