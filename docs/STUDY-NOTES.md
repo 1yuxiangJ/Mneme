@@ -3857,7 +3857,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | # | 优化点 | 现状 | 怎么改 | 出处 |
 |---|---|---|---|---|
 | 1 | **embedding 复用** | Day 14 已做:进程内 embedding cache,同文本复用向量 | 后续可加跨进程 cache / provider 级别 metrics | §5.1 讨论补录 |
-| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | 后续可加后台失败队列 / 用户可查询写入状态 | §5.1 讨论补录 |
+| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | Day 24 已记录缺口:当前 accepted 后后台任务可能丢;后续上持久化 `memory_write_jobs/outbox` + retry + 状态查询 + dead-letter | §5.1 讨论补录 |
 | 3 | **swap 字段级合并** | swap 整行覆盖,丢 cycle 期间 Awake 的 use_count 更新 | 按字段分归属:语义字段(content/confidence)取 staging,统计字段(use_count/last_used)取主表回填 | §4.4 Q3 |
 | 4 | **大数据量放弃整表复制** | snapshot 整表复制到 staging,100 万行扛不住 | 改 MVCC 快照读(REPEATABLE READ,不锁不复制)+ 短事务只 apply 改动的少数行 | §4.4 Q1 |
 | 5 | **swap 加 lock_timeout** | Day 14 已做:swap transaction 内设置 `lock_timeout=500ms` | 后续可加 retry/backoff 和失败告警 | §4.4 Q2 |
@@ -3866,6 +3866,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 8 | **可信置信度用 logprobs**(可选) | confidence 由 LLM 正文自报(没校准) | 真要细粒度可信置信度:读 token logprobs + 校准(temperature/Platt scaling) | §4.2 Q3 |
 | 9 | **embedding defer-write** | MVP 是 fail-fast:embedding 失败 fact 不入库 | fact 先入库(embedding=NULL)+ 后台 backlog worker 补 | §6.2 |
 | 10 | **idle 计时持久化** | 存进程内存变量,重启归零 | 启动时从 ops_log 推算最近活动时间(零写放大) | §6.4 |
+| 11 | **异步写入持久化队列** | `remember`/`forget` 是 `asyncio.create_task` fire-and-forget;`accepted` 不保证最终落库 | 先写 `memory_write_jobs(status=pending,payload_json,attempt_count,last_error)`,worker 重试,失败进 dead-letter,提供 job 状态查询 | §5.1 / Day 24 |
 | 11 | **ops_log append-only DB 强制** | 应用层自律,DB 没拦 UPDATE/DELETE | PG trigger `BEFORE UPDATE/DELETE RAISE EXCEPTION` 或 `REVOKE` | §4.3 / §7 ① |
 | 12 | **resolve 独立 op_type** | Day 14 已做:resolve 生成 `sleep_resolve`;Day 15 改为 pending op,swap 成功后写入主日志 | 后续可在 inspect 输出里单独分组展示 | §4.3 |
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |

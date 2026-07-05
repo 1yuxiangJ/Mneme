@@ -346,7 +346,9 @@ Claude Code → mneme MCP server:
               ◄─── 后台任务完成;如果失败写服务日志
 ```
 
-**异步写入的代价**:Claude Code 收到 `accepted` 时,事实不一定已经落库。刚 `remember` 后立刻 `recall` 可能暂时查不到,这是最终一致性取舍。读类工具 `recall` / `list_memory` 仍然同步,因为它们的结果会直接影响当前回答。
+**异步写入的代价**:Claude Code 收到 `accepted` 时,事实不一定已经落库。刚 `remember` 后立刻 `recall` 可能暂时查不到,这是最终一致性取舍。更重要的是,当前实现是 `asyncio.create_task` fire-and-forget:如果后台 Awake / embedding / DB 写入失败,或 Mneme 进程在后台任务完成前崩溃,这条记忆可能丢失。当前只有服务日志能看到失败,没有持久化 pending queue、重试、状态查询或 dead-letter。读类工具 `recall` / `list_memory` 仍然同步,因为它们的结果会直接影响当前回答。
+
+**后续可靠性优化**:把 `remember` / `forget` 改成持久化 job/outbox 模式。MCP 先在 DB 里写 `memory_write_jobs(status=pending, payload_json, attempt_count, last_error...)`,返回 `accepted(job_id)`;后台 worker 扫 pending,成功标记 `succeeded`,失败重试,超过阈值进 `failed/dead-letter`,并提供状态查询。这样 `accepted` 语义从"后台任务已创建"升级为"写入意图已持久化,进程崩溃也不会丢"。
 
 **Awake 防卡死**:Awake ReAct 显式限制 `recursion_limit=8`,LLM 单步 `timeout=20s, max_retries=1`,外层 `asyncio.wait_for(..., 45s)` 兜底。极端情况下返回 `status="timeout"` 而不是让 Claude Code 一直等。
 
