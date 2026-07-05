@@ -4,15 +4,16 @@ Per Letta sleep-time compute (arxiv 2504.13171), this agent is the SOLE
 writer of core_blocks. The Awake agent only writes archival; Sleep promotes
 and consolidates.
 
-A cycle proceeds through up to 8 nodes:
+A cycle proceeds through up to 9 nodes:
   1. snapshot    — clone main → *_staging
   2. plan        — LLM decides which subsequent phases to run
   3. consolidate — merge near-duplicates (staging only)
   4. promote     — lift archival → core_blocks (staging; only path to core)
   5. demote      — soft-delete stale low-confidence archival (staging)
   6. resolve     — fix internal contradictions in core_blocks (staging)
-  7. reflect     — write "about user" snapshot to memory_ops_log
-  8. swap        — atomic_swap staging → main
+  7. core_refresh — prune stale / over-specific core content (staging)
+  8. reflect     — write "about user" snapshot to memory_ops_log
+  9. swap        — atomic_swap staging → main
 
 Budget enforcement:
   - max_wall_time (settings.sleep_max_wall_time_seconds, default 300s)
@@ -51,6 +52,7 @@ class SleepState(TypedDict, total=False):
     promote_actions: list[Any]
     demote_actions: list[Any]
     contradictions: list[Any]
+    core_refresh_actions: list[Any]
     reflection_text: str
     pending_ops: list[MemoryOpDraft]
     aborted: bool
@@ -267,6 +269,35 @@ async def node_resolve(state: SleepState) -> SleepState:
     )
 
 
+async def node_core_refresh(state: SleepState) -> SleepState:
+    if (
+        state.get("aborted")
+        or "core_refresh" not in state.get("plan", [])
+        or not _budget_ok(state)
+    ):
+        return state
+    session_maker = get_sessionmaker()
+    async with session_maker() as session:
+        context = await tools.get_core_refresh_context(session)
+        if not any(
+            (block.get("value") or "").strip()
+            for block in context["core_blocks"]
+        ):
+            logger.info("core_refresh: no non-empty core blocks")
+            return {**state, "core_refresh_actions": []}
+        rendered = prompts.CORE_REFRESH_PROMPT.format(
+            core_refresh_context_json=json.dumps(context, indent=2, default=str),
+        )
+        decision = await _llm_json(rendered)
+        actions = decision.get("actions", [])
+        pending_ops = await tools.apply_core_refreshes(session, actions)
+    logger.info("core_refresh: %d actions", len(actions))
+    return _append_pending_ops(
+        {**state, "core_refresh_actions": actions},
+        pending_ops,
+    )
+
+
 async def node_reflect(state: SleepState) -> SleepState:
     if (
         state.get("aborted")
@@ -337,6 +368,7 @@ def build_sleep_graph() -> Any:
     g.add_node("promote", node_promote)
     g.add_node("demote", node_demote)
     g.add_node("resolve", node_resolve)
+    g.add_node("core_refresh", node_core_refresh)
     g.add_node("reflect", node_reflect)
     g.add_node("swap", node_swap)
 
@@ -346,7 +378,8 @@ def build_sleep_graph() -> Any:
     g.add_edge("consolidate", "promote")
     g.add_edge("promote", "demote")
     g.add_edge("demote", "resolve")
-    g.add_edge("resolve", "reflect")
+    g.add_edge("resolve", "core_refresh")
+    g.add_edge("core_refresh", "reflect")
     g.add_edge("reflect", "swap")
     g.add_edge("swap", END)
     return g.compile()
@@ -405,5 +438,6 @@ async def run_sleep_cycle() -> dict[str, Any]:
         "promote_count": len(final_state.get("promote_actions") or []),
         "demote_count": len(final_state.get("demote_actions") or []),
         "contradictions_count": len(final_state.get("contradictions") or []),
+        "core_refresh_count": len(final_state.get("core_refresh_actions") or []),
         "reflection_preview": (final_state.get("reflection_text") or "")[:200],
     }

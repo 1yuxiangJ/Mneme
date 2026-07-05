@@ -33,7 +33,8 @@ Phases available:
 2. promote    — lift frequent, explicit, durable, useful archival into core blocks
 3. demote     — soft-delete archival that's stale and low-signal
 4. resolve    — detect & fix contradictions within core blocks
-5. reflect    — write a one-paragraph "about the user" snapshot to ops log
+5. core_refresh — remove stale / over-specific / unsupported core content
+6. reflect    — write a one-paragraph "about the user" snapshot to ops log
 
 Output strictly this JSON (no commentary):
 {{
@@ -44,6 +45,9 @@ Output strictly this JSON (no commentary):
 Constraints:
 - If archival_count < {min_archival}: skip everything except reflect.
 - If no archival created since last cycle: skip consolidate.
+- Include core_refresh when core blocks contain non-empty content and recent
+  ops or supporting archival suggest the core may now be stale, over-specific,
+  or unsupported.
 - Always include reflect at the end of a productive cycle (it's cheap, gives
   the human something to inspect).
 """
@@ -207,7 +211,58 @@ Be very conservative — only flag genuine logical conflicts, not stylistic diff
 
 
 # =====================================================================
-# Phase 5: REFLECT
+# Phase 5: CORE_REFRESH
+# Refresh stale / over-specific core content.
+# =====================================================================
+
+CORE_REFRESH_PROMPT = """You are mneme's Sleep agent in the CORE_REFRESH phase.
+
+Your job is to maintain core_blocks quality. Core blocks are dense user-profile
+summaries that Claude Code may read frequently. They should not become a bag of
+miscellaneous facts.
+
+Core refresh context:
+{core_refresh_context_json}
+
+Decide for each non-empty core block whether it should be refreshed.
+
+Refresh when a block contains:
+- stale stage-specific facts that are no longer supported by active archival;
+- fine-grained lifestyle details that should remain only in archival;
+- content contradicted or superseded by newer high-confidence archival;
+- duplicated or low-value wording that reduces core density.
+
+Do NOT delete durable high-salience preferences, habits, career priorities, or
+communication preferences. Do NOT invent facts. Prefer preserving useful stable
+content and removing only the weak parts.
+
+Output strictly this JSON:
+{{
+  "actions": [
+    {{
+      "block": "preferences",
+      "decision": "REFRESH",
+      "new_block_value": "<complete new block value>",
+      "reason": "<why this block needed refresh>"
+    }},
+    {{
+      "block": "habits",
+      "decision": "KEEP",
+      "reason": "<why current block is still appropriate>"
+    }}
+  ]
+}}
+
+Rules:
+- new_block_value MUST be the COMPLETE new value, not a diff.
+- Keep each block under its char_limit.
+- If a block is empty, KEEP it.
+- If unsure, KEEP.
+"""
+
+
+# =====================================================================
+# Phase 6: REFLECT
 # Write a one-paragraph "about the user" snapshot.
 # =====================================================================
 
@@ -244,5 +299,6 @@ PROMPTS = {
     "promote": PROMOTE_PROMPT,
     "demote": DEMOTE_PROMPT,
     "resolve": RESOLVE_PROMPT,
+    "core_refresh": CORE_REFRESH_PROMPT,
     "reflect": REFLECT_PROMPT,
 }

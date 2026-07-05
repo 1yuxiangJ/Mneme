@@ -108,7 +108,7 @@ Python 3.11+。不用 Java(虽然作者是 Java 实习)。
 
 > "我求职双线投——Java backend 主线,这个项目是差异化补充。Java 我有 Thunderbit 实习背书,常规 backend 题不需要再用项目证明。这个项目要展示 **AI agent + 架构设计 + 系统设计** 能力,Python 是行业主场,LangGraph / MCP / Letta paper 引用实现都在 Python 生态。用 Java 反而会被追'为啥不用主流栈',那个故事更难讲。
 >
-> 另外这个项目里 90% 的复杂度不在语言上——是在 **read-only primary 怎么落地**、**staging swap 怎么不阻塞**、**Sleep cycle 8 阶段怎么协调**。这些设计原则跟语言无关,Java 重写也是同一套架构。"
+> 另外这个项目里 90% 的复杂度不在语言上——是在 **read-only primary 怎么落地**、**staging swap 怎么不阻塞**、**Sleep cycle 9 阶段怎么协调**。这些设计原则跟语言无关,Java 重写也是同一套架构。"
 
 ### 反方观点防御
 
@@ -195,7 +195,7 @@ g.add_edge("snapshot", "plan")
 ...
 ```
 
-为啥 Sleep 用这个:**固定 pipeline**——8 阶段顺序写死,每个节点内 LLM 决策,但节点之间流向硬编码(不能让 LLM 跳过 snapshot 直接 swap)。
+为啥 Sleep 用这个:**固定 pipeline**——9 阶段顺序写死,每个节点内 LLM 决策,但节点之间流向硬编码(不能让 LLM 跳过 snapshot 直接 swap)。
 
 ### 取舍口诀
 
@@ -237,7 +237,7 @@ LLM API
 
 我们项目两个都用:`langgraph` 做编排,`langchain-openai` 做 LLM 客户端。
 
-如果硬 Java 重写:LangChain4j 可以做基础层,但 Sleep 的 `StateGraph` 8 节点要手撸状态机(switch / sealed class),代码量翻倍。这是 Python 在这项目"自然选择"的硬性理由。
+如果硬 Java 重写:LangChain4j 可以做基础层,但 Sleep 的 `StateGraph` 9 节点要手撸状态机(switch / sealed class),代码量翻倍。这是 Python 在这项目"自然选择"的硬性理由。
 
 #### Q3:StateGraph 是怎么运作的?node / edge / state 是啥?
 
@@ -304,16 +304,16 @@ Anthropic *Building Effective Agents*(2024-12)分三层:
 | **Agentic Workflow** | **流程框架人写死,节点内 LLM 决策** | 我们的 **Sleep** |
 | **Agent** | **流程也是 LLM 决策**(动态选下一步) | 我们的 **Awake** |
 
-Sleep 每个 node 都调 LLM 做实质决策(plan / consolidate / promote / demote / resolve / reflect),所以**不是哑工作流**。但**节点之间流向写死**——所以也不是 pure agent。**两个特征加起来 = agentic workflow**。
+Sleep 每个 node 都调 LLM 做实质决策(plan / consolidate / promote / demote / resolve / core_refresh / reflect),所以**不是哑工作流**。但**节点之间流向写死**——所以也不是 pure agent。**两个特征加起来 = agentic workflow**。
 
 **这不是退化,是正确选择**:
-1. Sleep 8 阶段有严格状态依赖(snapshot 必须先、swap 必须后),让 LLM 自由调度有数据损坏风险
+1. Sleep 9 阶段有严格状态依赖(snapshot 必须先、swap 必须后),让 LLM 自由调度有数据损坏风险
 2. Letta 真版也是这么做的
 3. Anthropic 论文明确建议:可预测性 > 灵活性的场景用 workflow
 
 面试如果被追问:
 
-> "Sleep 严格说是 agentic workflow——节点流向写死,每个节点 LLM 做实质决策(plan / consolidate / promote / demote / resolve / reflect 都是 LLM 输出 JSON action,代码 apply)。这是主动选择不是技术不足:Sleep 8 阶段有严格状态依赖,让 LLM 自由调度有数据损坏风险。Letta paper 的 sleep-time consolidation 也是结构化 pipeline。Awake 是 pure ReAct agent——MCP 请求进来后 LLM 自由决定调哪些 tool / 几次 / 什么时候结束。两种模式各用在对的地方:Awake 需要 flexibility,Sleep 需要 predictability。"
+> "Sleep 严格说是 agentic workflow——节点流向写死,每个节点 LLM 做实质决策(plan / consolidate / promote / demote / resolve / core_refresh / reflect 都是 LLM 输出 JSON action,代码 apply)。这是主动选择不是技术不足:Sleep 9 阶段有严格状态依赖,让 LLM 自由调度有数据损坏风险。Letta paper 的 sleep-time consolidation 也是结构化 pipeline。Awake 是 pure ReAct agent——MCP 请求进来后 LLM 自由决定调哪些 tool / 几次 / 什么时候结束。两种模式各用在对的地方:Awake 需要 flexibility,Sleep 需要 predictability。"
 
 简历措辞:`"Awake is a pure ReAct agent, Sleep is an agentic workflow orchestrating idle-time memory consolidation."`
 
@@ -531,7 +531,7 @@ LLM 生成每个 token 时,先给整个词表算一个概率分布(每个词的 
 | 哪里 | T | 为什么 |
 |---|---|---|
 | Awake 全程 | **0** | 可复现 + 严格按 prompt + tool 决策确定;压住"乱跳"的随机性来源 |
-| Sleep plan/consolidate/promote/demote/resolve | **0** | 要输出**严格 JSON**,发散 = 格式坏 + 决策不稳 |
+| Sleep plan/consolidate/promote/demote/resolve/core_refresh | **0** | 要输出**严格 JSON**,发散 = 格式坏 + 决策不稳 |
 | Sleep reflect | **0.3** | 唯一例外——写**自然语言段落**,要一点措辞自然度 |
 
 **为什么 reflect 是 0.3 不是 0**:T=0 会让段落死板机械、每次几乎一样;0.3 给一点语言流动性像人写的;但**不给到 0.7**,因为还要忠于事实不能瞎编(高温=幻觉风险)。**0.3 = 自然但不放飞**。
@@ -844,7 +844,7 @@ Hibernate                     ← JPA 的具体实现,生成 SQL
 
 ### Sleep(自主)
 - 触发:APScheduler 检测 idle ≥ 30 分钟,或每天 03:00 cron
-- 运行:LangGraph `StateGraph` 8 阶段 pipeline
+- 运行:LangGraph `StateGraph` 9 阶段 pipeline
 - 耗时:分钟级(预算 5 分钟)
 - 权限:**core_blocks 的唯一 writer**
 
@@ -943,7 +943,7 @@ Claude Code (LLM A, 比如 Claude Sonnet)
 
 为啥分两层:权限 check + dedup + 持久化决策**不能让 client LLM 跑**——必须 server 端做。
 
-### Q2:Sleep 8 阶段每个具体干啥?
+### Q2:Sleep 9 阶段每个具体干啥?
 
 | # | 阶段 | 干啥 | 关键文件 |
 |---|---|---|---|
@@ -952,9 +952,10 @@ Claude Code (LLM A, 比如 Claude Sonnet)
 | 3 | **consolidate** | pgvector 找 cosine < 0.15 的 cluster,LLM merge | `sleep/tools.py:92-151, 211-246` |
 | 4 | **promote** | 找 `use_count≥5 AND confidence>=3 AND stability=long_term AND salience>=3` archival,LLM 升到 core block(**core 唯一入口**) | `sleep/tools.py:154-178, 249-283` |
 | 5 | **demote** | stale 且低信号(`confidence<=1 OR temporary OR salience<=1`)的 archival 软删 | `sleep/tools.py:181-203, 286-315` |
-| 6 | **resolve** | LLM 扫 core 找内部矛盾(真逻辑冲突,不 fix 风格差异) | `sleep/agent.py:189-216` |
-| 7 | **reflect** | LLM 写 2-4 句"about user"段落到 ops_log(给人审阅;唯一 T=0.3) | `sleep/agent.py:219-245` |
-| 8 | **swap** | 单 transaction:合并 cycle 期间主表新 archival + 三对 RENAME + TRUNCATE 旧 | `sleep/staging.py:61-92` |
+| 6 | **resolve** | LLM 扫 core 找内部矛盾(真逻辑冲突,不 fix 风格差异) | `sleep/agent.py` |
+| 7 | **core_refresh** | LLM 清理 core 里过期、过细、缺少支撑的内容 | `sleep/agent.py` / `sleep/tools.py` |
+| 8 | **reflect** | LLM 写 2-4 句"about user"段落到 ops_log(给人审阅;唯一 T=0.3) | `sleep/agent.py` |
+| 9 | **swap** | 单 transaction:合并 cycle 期间主表新 archival + 三对 RENAME + TRUNCATE 旧 | `sleep/staging.py:61-92` |
 
 一图总结:
 ```
@@ -964,8 +965,9 @@ Claude Code (LLM A, 比如 Claude Sonnet)
 4.promote    = LLM 升 archival → core    (LLM + staging 写)  ← core 唯一入口
 5.demote     = LLM 软删 stale            (LLM + staging 写)
 6.resolve    = LLM 修 core 内矛盾         (LLM + staging 写)
-7.reflect    = LLM 写 about-user 段落    (LLM + ops_log 写)
-8.swap       = staging ↔ 主表 原子交换   (DB)
+7.core_refresh= LLM 刷新 core 过期内容   (LLM + staging 写)
+8.reflect    = LLM 写 about-user 段落    (LLM + ops_log 写)
+9.swap       = staging ↔ 主表 原子交换   (DB)
 ```
 
 ### Q3:Awake 和 Sleep 都要走 staging swap 吗?
@@ -1552,7 +1554,8 @@ CREATE INDEX idx_ops_log_actor ON memory_ops_log(actor, ts DESC);
 | 4 | `sleep_promote` | Sleep | `apply_promotions` 生成 pending op,swap 成功后 flush | core |
 | 5 | `sleep_demote` | Sleep | `apply_demotions` 生成 pending op,swap 成功后 flush | archival |
 | 6 | `sleep_resolve` | Sleep | `apply_resolutions` 生成 pending op,swap 成功后 flush | core |
-| 7 | `sleep_reflect` | Sleep | `draft_reflection_log` 生成 about-user pending op,swap 成功后 flush | NULL |
+| 7 | `sleep_core_refresh` | Sleep | `apply_core_refreshes` 生成 pending op,swap 成功后 flush | core |
+| 8 | `sleep_reflect` | Sleep | `draft_reflection_log` 生成 about-user pending op,swap 成功后 flush | NULL |
 | 8 | `policy_violation` | 异常路径 | `write_core_block` 被 non-sleep actor 调时 | core |
 
 **两个边界要记牢**:
@@ -1754,7 +1757,7 @@ Sleep cycle 开始
   └─ 返回 snapshot_ts(给 atomic_swap 用)
   │
   ▼
-[Sleep 8 phase 跑]                  (sleep/agent.py)
+[Sleep 9 phase 跑]                  (sleep/agent.py)
   │ 全程只写 *_staging,主表不动
   │ 每个 apply_xxx 各自 COMMIT(不是整 cycle 一个事务)
   │ Awake 此时还能正常服务,读写主表
@@ -2477,7 +2480,7 @@ sleep/agent.py: run_sleep_cycle()
     ▼
 
 ┌─────────────────────────────────────────────────────────────┐
-│  LangGraph StateGraph 跑 8 节点                              │
+│  LangGraph StateGraph 跑 9 节点                              │
 └─────────────────────────────────────────────────────────────┘
 
 [① node_snapshot]
@@ -2585,18 +2588,31 @@ sleep/agent.py: run_sleep_cycle()
     │ 耗时: ~2-5 秒
     ▼
 
-[⑦ node_reflect]
+[⑦ node_core_refresh]
+    │ context = await tools.get_core_refresh_context(session)
+    │ rendered = CORE_REFRESH_PROMPT.format(core_refresh_context_json=...)
+    │ decision = await _llm_json(rendered)  ──→ DeepSeek API call #6
+    │   返回 {"actions": [{"block":"preferences", "decision":"REFRESH", "new_block_value":"...", "reason":"..."}]} 或 KEEP
+    │ await tools.apply_core_refreshes(session, actions)
+    │   ├─ UPDATE core_blocks_staging SET value=:v WHERE label=:block
+    │   ├─ return MemoryOpDraft(op_type='sleep_core_refresh', ...)
+    │   └─ COMMIT staging 修改
+    │ state["pending_ops"] += returned drafts
+    │ 耗时: ~2-5 秒
+    ▼
+
+[⑧ node_reflect]
     │ summary = await tools.summarize_state(...)
     │ highlights = SELECT id, content, confidence, use_count FROM archival_facts_staging WHERE is_deleted=FALSE ORDER BY confidence DESC, use_count DESC LIMIT 5
     │ rendered = REFLECT_PROMPT.format(core_blocks_json=..., archival_highlights_json=...)
     │ llm = get_chat_llm(temperature=0.3)  ← 唯一不用 0.0 的 phase
-    │ resp = await llm.ainvoke([HumanMessage(content=rendered)])  ──→ DeepSeek API call #6
+    │ resp = await llm.ainvoke([HumanMessage(content=rendered)])  ──→ DeepSeek API call #7
     │   返回 plain text "User is a Java backend intern at Thunderbit..."
     │ state["pending_ops"] += [tools.draft_reflection_log(reflection_text)]
     │ 耗时: ~2-4 秒
     ▼
 
-[⑧ node_swap]
+[⑨ node_swap]
     │ if aborted: cleanup_staging + return
     │ if snapshot_ts is None: cleanup_staging + return
     │ await staging.atomic_swap(session, snapshot_ts, pending_ops=state["pending_ops"])
@@ -2626,7 +2642,7 @@ scheduler.py: _cycle_running = False
 
 | 类型 | 次数 | 在哪 |
 |---|---|---|
-| **LLM 调用** | **6 次** | plan / consolidate / promote / demote / resolve / reflect 各 1 次 |
+| **LLM 调用** | **7 次** | plan / consolidate / promote / demote / resolve / core_refresh / reflect 各 1 次 |
 | **Embedding** | **0 次** | Sleep 不算 embedding(只读 staging 里现成的 embedding;但 consolidation 用了 pgvector `<=>` 算距离,**不调外部 API**) |
 | **DB COMMIT** | **~10 次** | snapshot 1 + 每个 apply_xxx 1 + reflect 1 + swap 1 + N 个 consolidate / promote / demote 子 commit |
 | **DB query 总数** | **50-200 个** | 取决于 archival 数量(consolidate O(N²)+其他 phase 各几个) |
@@ -2641,8 +2657,9 @@ scheduler.py: _cycle_running = False
 | ④ promote | 2-5 秒 |
 | ⑤ demote | 2-5 秒 |
 | ⑥ resolve | 2-5 秒 |
-| ⑦ reflect | 2-4 秒 |
-| ⑧ swap | 50-200 ms |
+| ⑦ core_refresh | 2-5 秒 |
+| ⑧ reflect | 2-4 秒 |
+| ⑨ swap | 50-200 ms |
 | **总计** | **~15-30 秒**(MVP 数据量),最差 5 分钟(budget) |
 
 ### Token 成本
@@ -2695,7 +2712,7 @@ except Exception as exc:
 
 **思考方向**:**能不能省**?(线索:embedding cache;LLM 跳过 search 直接 insert;...)各自的取舍?
 
-#### Q2:一次 sleep cycle,**8 phase 各自调几次 LLM**?
+#### Q2:一次 sleep cycle,**9 phase 各自调几次 LLM**?
 
 每 phase 大致:
 - snapshot:0(纯 DB)
@@ -2704,6 +2721,7 @@ except Exception as exc:
 - promote:1(或 N=candidate 数)
 - demote:1
 - resolve:1
+- core_refresh:1
 - reflect:1
 - swap:0
 
@@ -3479,7 +3497,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 >
 > 这个项目要展示 **AI agent + 架构设计 + 系统设计** 能力,Python 是行业主场:LangGraph / MCP Python SDK / Letta 引用实现全在 Python。用 Java 反而被追'为啥不用主流栈',故事更难讲。
 >
-> 项目 90% 复杂度不在语言,在 read-only primary 怎么落地、staging swap 怎么不阻塞、Sleep cycle 8 阶段怎么协调。这些 Java 重写也是同一套架构。"
+> 项目 90% 复杂度不在语言,在 read-only primary 怎么落地、staging swap 怎么不阻塞、Sleep cycle 9 阶段怎么协调。这些 Java 重写也是同一套架构。"
 
 **加分点**:
 - 提具体语言生态差距(LangChain4j 落后 2-3 版本)
@@ -3496,7 +3514,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 ### Q4:这项目你做了多久,目前完成度?
 
 **骨架**(诚实版,需根据实际填):
-> "断断续续 X 周。完成度:**核心架构跑通**——MCP server / Awake ReAct / Sleep 8 phase / staging swap 都跑过端到端 dogfooding。**已知 trade-off 10 个**(详见我项目 docs/STUDY-NOTES.md §7)。**没做的**:multi-tenant、HA、eval harness、backup——这些是已知 scope 外,不是技术不足。"
+> "断断续续 X 周。完成度:**核心架构跑通**——MCP server / Awake ReAct / Sleep 9 phase / staging swap 都跑过端到端 dogfooding。**已知 trade-off 10 个**(详见我项目 docs/STUDY-NOTES.md §7)。**没做的**:multi-tenant、HA、eval harness、backup——这些是已知 scope 外,不是技术不足。"
 
 **加分点**:
 - 主动说"已知不做什么"(显示有 scope 概念)
@@ -3515,7 +3533,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 ### Q5:项目里你做的最难的决策是什么?
 
 **骨架**(挑一个真的难的,不要装):
-> "**Sleep 用 StateGraph 不用 create_react_agent**——很多人第一反应是'两个 agent 都用 ReAct 一致'。我反复想了几天,最后选 StateGraph,理由是 Sleep 8 阶段有严格状态依赖(snapshot 必须先、swap 必须后),让 LLM 自由调度有数据损坏风险。Anthropic Building Effective Agents 论文明确建议'可预测性 > 灵活性的场景用 workflow'。这就承认了 Sleep 严格说是 **agentic workflow** 不是 pure agent。**主动承认 + 解释为啥是对的选择**——这是我项目里最难的决策,因为它要承认架构上的'不一致'但论证其合理性。"
+> "**Sleep 用 StateGraph 不用 create_react_agent**——很多人第一反应是'两个 agent 都用 ReAct 一致'。我反复想了几天,最后选 StateGraph,理由是 Sleep 9 阶段有严格状态依赖(snapshot 必须先、swap 必须后),让 LLM 自由调度有数据损坏风险。Anthropic Building Effective Agents 论文明确建议'可预测性 > 灵活性的场景用 workflow'。这就承认了 Sleep 严格说是 **agentic workflow** 不是 pure agent。**主动承认 + 解释为啥是对的选择**——这是我项目里最难的决策,因为它要承认架构上的'不一致'但论证其合理性。"
 
 **加分点**:
 - 选个**真的有思考深度**的决策(不要选"用 Python")
@@ -3553,7 +3571,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 ### Q7:Awake 和 Sleep 怎么分工?为啥不合一个 agent?
 
 **骨架**:
-> "**Awake 实时响应**——MCP tool 进来,ReAct loop 跑几次决策返回。秒级。**Sleep 后台自主**——APScheduler 检测 idle 30 分钟或每天 03:00 触发,跑 8 阶段 pipeline。分钟级。
+> "**Awake 实时响应**——MCP tool 进来,ReAct loop 跑几次决策返回。秒级。**Sleep 后台自主**——APScheduler 检测 idle 30 分钟或每天 03:00 触发,跑 9 阶段 pipeline。分钟级。
 >
 > 不合一个 agent 的根本理由:**两种工作的时间尺度和决策粒度完全不同**。Awake 要快,LLM 一次只决策一步;Sleep 要稳,要做'consolidate 几十条 archival'这种重决策。合一个 agent = 强迫一个 LLM 既快又稳,反而都做不好。
 >
@@ -3642,7 +3660,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 **骨架**:
 > "OK。这项目全 async:Starlette + asyncpg + SQLAlchemy 2.0 async + APScheduler AsyncIOScheduler + LangGraph ainvoke。
 >
-> `asyncio.gather` 用过——但**这项目刻意没大量用**。原因:Sleep 的 8 phase 是**顺序**的(有状态依赖),Awake 的 ReAct loop 是 LangGraph 内部管理。我用 async 主要是 IO 不阻塞事件循环,不是为了并发跑多个 task。
+> `asyncio.gather` 用过——但**这项目刻意没大量用**。原因:Sleep 的 9 phase 是**顺序**的(有状态依赖),Awake 的 ReAct loop 是 LangGraph 内部管理。我用 async 主要是 IO 不阻塞事件循环,不是为了并发跑多个 task。
 >
 > 真要 gather 的场景:embedding 多文本批量(`embed_texts`),但代码里用的是 `aembed_documents` 一次 batch,不需要 gather。"
 
@@ -3684,7 +3702,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 ### Q13:LangGraph 的 StateGraph 你为啥不用 conditional edges?
 
 **骨架**:
-> "MVP 没用,留接口。**理由**:8 phase 顺序是固定的(snapshot → plan → consolidate → ... → swap),没有'根据 LLM 输出跳到不同节点'的场景。conditional_edges 加进来反而让代码复杂。
+> "MVP 没用,留接口。**理由**:9 phase 顺序是固定的(snapshot → plan → consolidate → ... → swap),没有'根据 LLM 输出跳到不同节点'的场景。conditional_edges 加进来反而让代码复杂。
 >
 > 但**留了演进空间**——节点之间不是用 if/else 而是 `g.add_edge(START, "snapshot")` 这种 DSL,未来要 conditional 直接加 `g.add_conditional_edges(...)`。比 if/else 强 的地方在**显式声明流程图**,debug + 改流程都直观。"
 
@@ -3801,7 +3819,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 > "**严格借鉴的**:
 > - 双 agent 架构(Awake / Sleep)
 > - read-only primary(Sleep 是 core 唯一 writer)
-> - sleep-time compute pipeline(plan / consolidate / promote / demote / resolve / reflect)
+> - sleep-time compute pipeline(plan / consolidate / promote / demote / resolve / core_refresh / reflect)
 > - 5 个 core memory blocks
 > - archival memory + embedding 检索
 >

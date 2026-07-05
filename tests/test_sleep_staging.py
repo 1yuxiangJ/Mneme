@@ -231,6 +231,38 @@ async def test_sleep_logs_are_pending_until_swap_commits(integration_session):
 
 
 @pytest.mark.asyncio
+async def test_core_refresh_logs_are_pending_until_swap_commits(integration_session):
+    """Core refresh should rewrite staging core and log only after swap succeeds."""
+    from mneme.sleep.tools import apply_core_refreshes
+
+    snapshot_ts = await snapshot_to_staging(integration_session)
+
+    pending_ops = await apply_core_refreshes(integration_session, [{
+        "block": "preferences",
+        "decision": "REFRESH",
+        "new_block_value": "User prefers direct, concrete engineering explanations.",
+        "reason": "remove stale and over-specific core details",
+    }])
+
+    staged_value = (await integration_session.execute(text(
+        "SELECT value FROM core_blocks_staging WHERE label = 'preferences'"
+    ))).scalar_one()
+    before_swap = (await integration_session.execute(text(
+        "SELECT count(*) FROM memory_ops_log"
+    ))).scalar_one()
+
+    await atomic_swap(integration_session, snapshot_ts, pending_ops=pending_ops)
+
+    op_type = (await integration_session.execute(text(
+        "SELECT op_type FROM memory_ops_log WHERE target_id = 'preferences'"
+    ))).scalar_one()
+
+    assert staged_value == "User prefers direct, concrete engineering explanations."
+    assert before_swap == 0
+    assert op_type == "sleep_core_refresh"
+
+
+@pytest.mark.asyncio
 async def test_snapshot_repairs_missing_archival_id_sequence(integration_session):
     """Sleep should recover if a previous swap left archival id default missing."""
     await integration_session.execute(text(

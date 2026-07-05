@@ -231,6 +231,67 @@ async def get_stale_candidates(
     ]
 
 
+async def get_core_refresh_context(
+    session: AsyncSession,
+    archival_limit: int = 30,
+    ops_limit: int = 20,
+) -> dict[str, Any]:
+    """Load staging core + supporting evidence for core refresh."""
+    core_rows = (await session.execute(text(
+        "SELECT label, value, version, char_limit "
+        "FROM core_blocks_staging ORDER BY label"
+    ))).all()
+    archival_rows = (await session.execute(text(
+        "SELECT id, content, tags, confidence, stability, salience, use_count, "
+        "last_used_at, created_at "
+        "FROM archival_facts_staging "
+        "WHERE is_deleted = FALSE "
+        "ORDER BY salience DESC, confidence DESC, use_count DESC, id DESC "
+        "LIMIT :lim"
+    ), {"lim": archival_limit})).all()
+    op_rows = (await session.execute(text(
+        "SELECT op_type, actor, target_kind, target_id, reason, ts "
+        "FROM memory_ops_log ORDER BY ts DESC, id DESC LIMIT :lim"
+    ), {"lim": ops_limit})).all()
+
+    return {
+        "core_blocks": [
+            {
+                "label": r.label,
+                "value": r.value,
+                "version": r.version,
+                "char_limit": r.char_limit,
+            }
+            for r in core_rows
+        ],
+        "supporting_archival": [
+            {
+                "id": r.id,
+                "content": r.content,
+                "tags": list(r.tags or []),
+                "confidence": r.confidence,
+                "stability": r.stability,
+                "salience": r.salience,
+                "use_count": r.use_count,
+                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in archival_rows
+        ],
+        "recent_ops": [
+            {
+                "op_type": r.op_type,
+                "actor": r.actor,
+                "target_kind": r.target_kind,
+                "target_id": r.target_id,
+                "reason": r.reason,
+                "ts": r.ts.isoformat() if r.ts else None,
+            }
+            for r in op_rows
+        ],
+    }
+
+
 # =====================================================================
 # Write-side: apply LLM decisions to staging tables
 # =====================================================================
@@ -379,6 +440,46 @@ async def apply_resolutions(
             "before_value": cur,
             "after_value": new_value,
             "reason": f"Resolved contradiction: {reason}",
+        })
+    await session.commit()
+    return pending_ops
+
+
+async def apply_core_refreshes(
+    session: AsyncSession,
+    actions: list[dict[str, Any]],
+) -> list[MemoryOpDraft]:
+    """Apply LLM-decided core refreshes to core_blocks_staging."""
+    pending_ops: list[MemoryOpDraft] = []
+    for act in actions:
+        if act.get("decision") != "REFRESH":
+            continue
+        block = act["block"]
+        new_value = act["new_block_value"]
+        reason = act.get("reason", "")
+
+        cur = (await session.execute(text(
+            "SELECT value FROM core_blocks_staging WHERE label = :l"
+        ), {"l": block})).scalar_one_or_none()
+
+        if cur == new_value:
+            continue
+
+        await session.execute(text(
+            "UPDATE core_blocks_staging "
+            "SET value = :v, version = version + 1, "
+            "last_writer = 'sleep_agent', updated_at = now() "
+            "WHERE label = :l"
+        ), {"v": new_value, "l": block})
+
+        pending_ops.append({
+            "op_type": "sleep_core_refresh",
+            "actor": SLEEP_ACTOR,
+            "target_kind": "core",
+            "target_id": block,
+            "before_value": cur,
+            "after_value": new_value,
+            "reason": f"Refreshed core block: {reason}",
         })
     await session.commit()
     return pending_ops
