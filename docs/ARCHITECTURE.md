@@ -136,7 +136,17 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 **参数**:
 - `content`:要记的事实(自然语言)
 - `tags`:标签数组(给后续 demote/promote 筛选用)
-- `confidence`:1=low / 2=medium / 3=high(给 Sleep 决定要不要 promote 用)
+- `confidence`:给 Sleep 决定 promote/demote 的稳定性信号,不是 LLM 自报概率。
+
+`confidence` 三档语义:
+
+| 值 | 语义 | 例子 |
+|---|---|---|
+| 3 | stable long-term fact:用户明确表达的长期稳定事实 | "用户喜欢足球";"用户偏好直接具体的中文解释" |
+| 2 | stage-specific / recent but useful:阶段性、最近状态、上下文相关,可能变化 | "用户最近主要玩 CS2";"用户当前 PS5/NS 不在身边" |
+| 1 | tentative / inferred:弱确认、推断、试探性事实 | "用户可能对某类游戏感兴趣" |
+
+如果一句话里混合长期事实和临时细节,应该拆开保存成多条不同 confidence 的记忆,或者跳过临时细节。不能把整句话统一打成 `confidence=3`。
 
 #### `recall(query, limit=5)`
 

@@ -96,11 +96,14 @@ async def insert_archival_fact(
         short-term mood unless the user confirms it is a stable pattern.
       - Do NOT call for project-specific facts (those belong in CLAUDE.md).
       - This NEVER writes to core_blocks; those are owned by the Sleep agent.
+      - Confidence policy: 3=stable long-term, 2=stage-specific/recent but
+        useful, 1=weak/inferred/tentative. If one user message mixes stable and
+        temporary information, split the memories instead of storing all as 3.
 
     Args:
         content: The fact about the user, in natural language.
         tags: Topical tags (e.g. ["preference", "code-style"]).
-        confidence: 1=low, 2=medium, 3=high.
+        confidence: 1=low/tentative, 2=stage-specific, 3=stable long-term.
         source: Where this fact came from (session id or origin tag).
         reason: Brief rationale for storing it.
     """

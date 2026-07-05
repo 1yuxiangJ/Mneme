@@ -38,6 +38,13 @@ GUIDELINES per MCP tool:
    - First call search_archival(query=content) to detect near-duplicates.
    - If a near-duplicate exists (distance < 0.1), skip and explain "duplicate of <id>".
    - Otherwise call insert_archival_fact(content, tags, confidence, reason=brief rationale).
+   - Confidence policy:
+     * 3 = stable long-term fact explicitly stated by the user.
+     * 2 = useful but stage-specific, recent, or may change soon.
+     * 1 = weakly confirmed, inferred, tentative, or needs later correction.
+   - If content mixes stable long-term facts with temporary details, split them
+     into separate memories with different confidence values, or skip the
+     temporary detail. Do not package the whole message as confidence=3.
 
 2) `recall(query, limit)`:
    - You MAY call load_core or get_overview to include user-profile context.

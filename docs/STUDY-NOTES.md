@@ -1264,11 +1264,23 @@ PG 原生支持 array 列,**省得开第二张表**(MySQL 就得 `archival_tags(
 
 #### `confidence SMALLINT DEFAULT 2` —— 1/2/3 三档
 
+注意:这里的 confidence 不是"用户说得有多确定",也不是 LLM 自报概率,而是**这条记忆作为长期用户画像信号的稳定性 / 可复用性**。
+
 | 值 | 含义 | 例子 |
 |---|---|---|
-| 1 | low | "用户**可能**喜欢深色主题"(一次提到) |
-| 2 | medium | "用户提到过几次 4 空格"(默认值) |
-| 3 | high | "用户明确说过 'I prefer 4-space'" |
+| 1 | tentative / inferred | "用户**可能**喜欢深色主题"(弱推断,未确认) |
+| 2 | stage-specific / recent but useful | "用户最近主要玩 CS2";"用户当前 PS5/NS 不在身边" |
+| 3 | stable long-term | "用户喜欢足球";"用户明确长期偏好 4 空格" |
+
+如果一句话里混了长期事实和短期状态,要拆开保存:
+
+```text
+用户喜欢足球。                    → confidence=3
+用户最近暂停健身。                → confidence=2 或先追问
+用户当前 PS5/NS 不在身边。        → confidence=2 或不记
+```
+
+不能把整句话打包成一条 `confidence=3`,否则 Sleep promote 会把阶段性事实误升进 core。
 
 为啥不浮点 [0, 1]:
 - LLM 输出整数比小数稳得多(prompt 里写 `"confidence": 1` vs `"confidence": 0.73`)

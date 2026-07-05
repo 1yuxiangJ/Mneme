@@ -108,11 +108,22 @@ async def remember(
     Project-specific facts (architecture, library choices, project conventions)
     belong in CLAUDE.md or Claude Code's per-project auto memory instead.
 
+    Confidence policy:
+    - 3 = stable long-term fact explicitly stated by the user. Suitable for
+      later Sleep promotion if it is reused.
+    - 2 = useful but stage-specific, recent, or may change soon. Keep in
+      archival memory but do not treat as core identity yet.
+    - 1 = weakly confirmed, inferred, tentative, or needs later correction.
+
+    If a user message mixes stable long-term facts with temporary details,
+    split them into separate memories with different confidence values, or skip
+    the temporary detail. Do not package the whole message as confidence=3.
+
     Args:
         content: The fact about the user.
         tags: Topical tags, e.g. ["preference", "code-style", "hobby",
             "lifestyle", "entertainment"].
-        confidence: 1=low, 2=medium, 3=high.
+        confidence: 1=low/tentative, 2=stage-specific, 3=stable long-term.
     """
     tag_str = ", ".join(tags) if tags else "(none)"
     cmd = (
