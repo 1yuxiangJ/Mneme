@@ -23,7 +23,7 @@ pytest: 28 passed, 1 warning
 Real MCP + Sleep smoke has also been verified:
 
 ```bash
-scripts/claude-mneme.sh mcp list
+claude mcp list
 /Users/mac/.local/bin/uv run python scripts/run_sleep_once.py
 /Users/mac/.local/bin/uv run python scripts/inspect_memory.py --limit 10
 ```

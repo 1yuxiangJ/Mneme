@@ -25,7 +25,7 @@ curl -sS http://127.0.0.1:8000/health
 
 ```bash
 cd /Users/mac/dream
-scripts/claude-mneme.sh mcp list
+claude mcp list
 ```
 
 期望:

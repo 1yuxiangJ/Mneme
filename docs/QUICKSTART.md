@@ -101,7 +101,7 @@ claude mcp add --transport http mneme --scope project http://127.0.0.1:8000/mcp
 验证 MCP 连接:
 
 ```bash
-scripts/claude-mneme.sh mcp list
+claude mcp list
 # → mneme: http://127.0.0.1:8000/mcp (HTTP) - ✔ Connected
 ```
 
@@ -109,15 +109,19 @@ scripts/claude-mneme.sh mcp list
 
 ```bash
 cd /Users/mac/dream
-scripts/claude-mneme.sh
+claude
 ```
 
-为什么不用直接 `claude`:
+为什么现在可以直接 `claude`:
 
 ```text
-当前 shell 可能带有 HTTP_PROXY/HTTPS_PROXY 指向本地代理端口。
-如果代理没启动,Claude Code 会连不上 Anthropic API 或本机 Mneme MCP。
-scripts/claude-mneme.sh 会清理这些代理变量,并设置 NO_PROXY。
+本机 ~/.zshrc 已配置透明 claude() 函数:
+- 子 shell 内清理 HTTP_PROXY/HTTPS_PROXY/http_proxy/https_proxy
+- 设置 NO_PROXY=127.0.0.1,localhost,::1
+- 再调用真实 Claude CLI
+
+所以你仍然输入 claude,但本地 Mneme MCP 不会被错误代理影响。
+scripts/claude-mneme.sh 保留为 fallback。
 ```
 
 首次进入项目目录时批准 `.mcp.json` 里的 `mneme` server。批准后可以在 Claude Code 里说:
@@ -217,8 +221,8 @@ uv run pytest --run-integration     # 加 integration(需要 mneme_test 库)
 | `uv: command not found` | `export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"` |
 | `extension "vector" does not exist` | `psql mneme -c "CREATE EXTENSION vector;"` |
 | `8000 port already in use` | 改 `.env` 的 `MCP_SERVER_PORT=8001` |
-| `claude mcp list` 显示 Failed to connect | 用 `scripts/claude-mneme.sh mcp list`,不要直接用带坏代理的 `claude` |
-| Claude Code 里看不到 Mneme 工具 | 确认 Mneme 服务在终端 A 跑着,再确认 `scripts/claude-mneme.sh mcp list` 是 `✔ Connected` |
+| `claude mcp list` 显示 Failed to connect | 先确认 Mneme 服务在跑:`curl http://127.0.0.1:8000/health`;再开新终端让 `.zshrc` 生效;仍失败再用 `scripts/claude-mneme.sh mcp list` fallback |
+| Claude Code 里看不到 Mneme 工具 | 确认 Mneme 服务在终端 A 跑着,再确认 `claude mcp list` 是 `✔ Connected` |
 | `pyproject.toml 找不到 src` | `cat pyproject.toml` 应该是 `packages = ["src/mneme"]` |
 | `cannot import name 'X' from 'langgraph'` | 见 `docs/CODE_REVIEW.md` P1 risks |
 
