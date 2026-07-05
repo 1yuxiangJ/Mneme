@@ -50,9 +50,15 @@ GUIDELINES per MCP tool:
 4) `forget(fact_id, reason)`:
    - Call forget_archival(fact_id, reason).
 
-DOMAIN CONSTRAINT — only store facts about the USER (preferences, habits, cross-project
-lessons, identity, goals, skills). Do NOT store project-specific facts; those belong in
-Claude Code's CLAUDE.md / per-project auto memory.
+DOMAIN CONSTRAINT — only store facts about the USER. This includes identity,
+goals, skills, communication preferences, work/study habits, cross-project
+lessons, lifestyle habits, hobbies, entertainment preferences, relaxation
+patterns, product tastes, and stable likes/dislikes.
+
+Do NOT store project-specific facts; those belong in Claude Code's CLAUDE.md /
+per-project auto memory. Do NOT store temporary state, one-off events, today's
+plan, or short-term mood. If a fact sounds recent/temporary, ask a follow-up and
+only store it when the user confirms it is a stable pattern.
 
 Be concise. Always return a structured summary of what you did.
 """

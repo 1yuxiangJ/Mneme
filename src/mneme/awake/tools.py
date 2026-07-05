@@ -89,7 +89,11 @@ async def insert_archival_fact(
     """Insert a new archival fact about the user.
 
     POLICY:
-      - Only call for cross-project user facts (preferences, habits, lessons).
+      - Only call for cross-conversation user facts: preferences, habits,
+        lessons, identity, goals, skills, hobbies, entertainment preferences,
+        lifestyle habits, relaxation patterns, and stable likes/dislikes.
+      - Do NOT call for temporary state, one-off events, today's plan, or
+        short-term mood unless the user confirms it is a stable pattern.
       - Do NOT call for project-specific facts (those belong in CLAUDE.md).
       - This NEVER writes to core_blocks; those are owned by the Sleep agent.
 

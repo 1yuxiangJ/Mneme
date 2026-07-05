@@ -59,6 +59,21 @@ Claude Code(trace):
 
 **亮点**:LLM 自己判断"该 remember",写入 archival。这是 LLM-driven memory writes,不是 backend CRUD。
 
+**生活偏好测试变体**:
+
+```
+你:足球、游戏、刷 B 站和抖音基本是我长期的放松方式。
+
+Claude Code(trace):
+  → 期望主动调 mcp__mneme__remember(
+      content="user's long-term relaxation habits include football, games, Bilibili, and Douyin",
+      tags=["lifestyle", "hobby", "entertainment"],
+      confidence=3
+    )
+```
+
+这类信息不是技术事实,但属于跨会话有用的用户画像。Day 20 已强化 MCP tool description,明确长期兴趣、娱乐偏好、生活习惯也应该记。
+
 ---
 
 ## 场景 3:切到不同 project,记忆跟着过(45s)

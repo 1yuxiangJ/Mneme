@@ -91,13 +91,27 @@ async def remember(
 ) -> dict[str, Any]:
     """Store a fact about the user.
 
-    ONLY call for cross-project user-level facts (preferences, habits, lessons,
-    identity). For project-specific facts (architecture, library choices, project
-    conventions), use CLAUDE.md or Claude Code's per-project auto memory instead.
+    Call for long-term, cross-conversation user facts: identity, goals,
+    skills, communication preferences, work/study habits, lifestyle habits,
+    hobbies, entertainment preferences, relaxation patterns, product tastes,
+    and stable likes/dislikes.
+
+    Good lifestyle examples:
+    - User likes football.
+    - User plays CS2 and often relaxes with games.
+    - User watches Bilibili/Douyin as a common leisure habit.
+    - User used to exercise regularly and values fitness.
+
+    Do NOT call for temporary state, one-off events, today's plan, short-term
+    mood, or project-specific facts. If a fact sounds recent/temporary, ask a
+    follow-up and only store it when the user confirms it is a stable pattern.
+    Project-specific facts (architecture, library choices, project conventions)
+    belong in CLAUDE.md or Claude Code's per-project auto memory instead.
 
     Args:
         content: The fact about the user.
-        tags: Topical tags, e.g. ["preference", "code-style"].
+        tags: Topical tags, e.g. ["preference", "code-style", "hobby",
+            "lifestyle", "entertainment"].
         confidence: 1=low, 2=medium, 3=high.
     """
     tag_str = ", ".join(tags) if tags else "(none)"

@@ -98,7 +98,13 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 **何时被调**:Claude Code 的 LLM 在对话中**自己判断**"用户透露了关于他这个人的事实",主动调用。**不是用户喊"记一下"**——是 LLM 自主决策(LLM-driven memory writes,Letta paper 核心范式)。
 
-例:你说"我决定以后所有项目都用 Ruff" → LLM 内部判断这是 cross-project 偏好 → 调 `remember("user prefers Ruff", ["preference", "tooling"], 3)`
+例 1:你说"我决定以后所有项目都用 Ruff" → LLM 内部判断这是 cross-project 偏好 → 调 `remember("user prefers Ruff", ["preference", "tooling"], 3)`
+
+例 2:你说"足球、游戏、刷 B 站/抖音基本是我长期的放松方式" → LLM 内部判断这是稳定生活偏好 → 调 `remember("user relaxes through football, games, Bilibili, and Douyin", ["lifestyle", "hobby", "entertainment"], 3)`
+
+**应该记的范围**:关于用户这个人的长期稳定事实,不只限工作学习。包括身份、目标、技能、沟通偏好、工作/学习习惯、长期兴趣爱好、娱乐偏好、生活习惯、放松方式、产品/审美偏好、稳定喜欢/不喜欢。
+
+**不应该记的范围**:临时状态、当天计划、一次性事件、短期情绪、项目内部事实。比如"今天有点累"不记;"最近游戏机不在身边"默认不记,除非用户确认这是长期模式。
 
 **mneme 内部**:MCP tool 先快速返回 `accepted`;后台 Awake agent ReAct → 先 `search_archival` 去重 → 没重复就 `insert_archival_fact` → 写 `memory_ops_log`
 
