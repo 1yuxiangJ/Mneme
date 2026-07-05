@@ -64,6 +64,16 @@ Current local machine also has user-scoped MCP config:
 /Users/mac/.claude.json
 ```
 
+Current local machine also has host-side proactive memory policy:
+
+```text
+/Users/mac/.claude/CLAUDE.md
+```
+
+This global Claude instruction tells Claude Code to proactively call Mneme
+`remember` for long-term cross-session user facts, instead of waiting for the
+user to explicitly say "remember this".
+
 Observed user-scope verification from `/Users/mac`:
 
 ```bash

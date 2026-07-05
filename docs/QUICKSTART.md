@@ -104,6 +104,14 @@ claude mcp add --transport http mneme --scope project http://127.0.0.1:8000/mcp
 claude mcp add --transport http --scope user mneme http://127.0.0.1:8000/mcp
 ```
 
+当前本机还在全局 Claude 指令里配置了主动记忆策略:
+
+```text
+/Users/mac/.claude/CLAUDE.md
+```
+
+这一步很关键: MCP tool description 只能告诉 Claude Code "remember 工具能做什么",但不会强制它主动用。全局指令负责告诉 Claude Code:遇到长期稳定的用户事实时,不要等用户说"记一下",应主动调用 Mneme。
+
 两份配置的职责不同:
 
 | 配置 | 位置 | 作用 |

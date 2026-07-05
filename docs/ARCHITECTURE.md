@@ -66,6 +66,27 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 它**不知道** mneme 内部架构,只知道 mneme 暴露了 4 个 tool:`remember` / `recall` / `list_memory` / `forget`。
 
+### 3.1.1 Host-side 主动记忆策略
+
+`remember` 是否被调用,第一判断发生在 **Claude Code host 端 LLM**。Mneme server 只能通过 MCP tool description 告诉它"这个工具能做什么";如果 host 端没有明确行为指令,模型通常会比较保守,只有用户说"记一下"时才调用 `remember`。
+
+因此本机在 `/Users/mac/.claude/CLAUDE.md` 里增加了全局 Mneme 记忆规则:
+
+- 不要等用户明确说"记住"。
+- 遇到长期稳定、跨会话有用的用户事实时主动调用 `remember`。
+- 范围包括工作学习,也包括长期兴趣、娱乐偏好、生活习惯、放松方式。
+- 临时状态、当天计划、短期情绪、一次性事件不记。
+- recent/temporary 信息先追问确认是否长期稳定。
+- 敏感信息保存前先确认。
+
+这层规则和 MCP tool description 分工不同:
+
+| 层 | 作用 |
+|---|---|
+| `/Users/mac/.claude/CLAUDE.md` | 告诉 Claude Code **什么时候应该主动用记忆工具** |
+| `mcp_server.py` tool docstring | 告诉 Claude Code **remember 工具适合存什么、不适合存什么** |
+| `awake/agent.py` system prompt | Mneme 内部接到 remember 后,负责去重、落库和边界约束 |
+
 ### 3.2 Awake Agent("接电话的")
 
 收到 Claude Code 的 MCP 请求 → 内部跑一个 LangGraph ReAct loop → 处理 → 返回结果。
