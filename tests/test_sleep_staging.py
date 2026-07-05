@@ -115,7 +115,7 @@ async def test_find_consolidation_clusters_uses_pgvector_distance(integration_se
 async def test_promote_candidates_require_long_term_salient_explicit_memory(
     integration_session,
 ):
-    """Promotion candidates must be explicit, durable, salient, and frequently used."""
+    """Promotion candidates must be explicit, durable, highly salient, and frequently used."""
     stable_id = await _insert_signal_archival(
         integration_session,
         "User prefers direct engineering explanations.",
@@ -123,6 +123,14 @@ async def test_promote_candidates_require_long_term_salient_explicit_memory(
         stability="long_term",
         salience=3,
         use_count=6,
+    )
+    await _insert_signal_archival(
+        integration_session,
+        "User likes a specific restaurant's fries.",
+        confidence=3,
+        stability="long_term",
+        salience=2,
+        use_count=12,
     )
     await _insert_signal_archival(
         integration_session,

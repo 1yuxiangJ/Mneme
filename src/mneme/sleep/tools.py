@@ -90,7 +90,7 @@ async def summarize_state(
         "AND use_count >= 5 "
         "AND confidence >= 3 "
         "AND stability = 'long_term' "
-        "AND salience >= 2 "
+        "AND salience >= 3 "
         "LIMIT 1"
     ))).first())
 
@@ -171,7 +171,7 @@ async def get_promote_candidates(
     session: AsyncSession,
     min_use_count: int = 5,
     min_confidence: int = 3,
-    min_salience: int = 2,
+    min_salience: int = 3,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Archival facts that meet the promotion threshold."""

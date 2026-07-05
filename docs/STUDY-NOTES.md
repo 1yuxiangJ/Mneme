@@ -950,7 +950,7 @@ Claude Code (LLM A, 比如 Claude Sonnet)
 | 1 | **snapshot** | 主表整表复制到 staging,记 `snapshot_ts` | `sleep/staging.py:38-58` |
 | 2 | **plan** | LLM 看状态决定本轮跑哪几个 phase(省 token + 跳无意义阶段) | `sleep/agent.py:106-127` |
 | 3 | **consolidate** | pgvector 找 cosine < 0.15 的 cluster,LLM merge | `sleep/tools.py:92-151, 211-246` |
-| 4 | **promote** | 找 `use_count≥5 AND confidence>=3 AND stability=long_term AND salience>=2` archival,LLM 升到 core block(**core 唯一入口**) | `sleep/tools.py:154-178, 249-283` |
+| 4 | **promote** | 找 `use_count≥5 AND confidence>=3 AND stability=long_term AND salience>=3` archival,LLM 升到 core block(**core 唯一入口**) | `sleep/tools.py:154-178, 249-283` |
 | 5 | **demote** | stale 且低信号(`confidence<=1 OR temporary OR salience<=1`)的 archival 软删 | `sleep/tools.py:181-203, 286-315` |
 | 6 | **resolve** | LLM 扫 core 找内部矛盾(真逻辑冲突,不 fix 风格差异) | `sleep/agent.py:189-216` |
 | 7 | **reflect** | LLM 写 2-4 句"about user"段落到 ops_log(给人审阅;唯一 T=0.3) | `sleep/agent.py:219-245` |
@@ -1368,7 +1368,7 @@ await session.commit()
 PROMOTE 候选:  use_count >= 5
               AND confidence >= 3
               AND stability = 'long_term'
-              AND salience >= 2
+              AND salience >= 3
               ↑ Awake search_archival 命中次数(说明常被用到)
 
 DEMOTE 候选:   last_used_at < now() - 90 days
@@ -2535,7 +2535,7 @@ sleep/agent.py: run_sleep_cycle()
     │ candidates = await tools.get_promote_candidates(session)
     │   SELECT * FROM archival_facts_staging
     │   WHERE use_count >= 5 AND confidence >= 3
-    │     AND stability = 'long_term' AND salience >= 2
+    │     AND stability = 'long_term' AND salience >= 3
     │   ORDER BY use_count DESC LIMIT 20
     │ if candidates:
     │   summary = await tools.summarize_state(session, None)  # 拿当前 core 内容
@@ -3777,7 +3777,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 >
 > **1. 边界不同**——ChatGPT Memory 是给 chatbot 的通用记忆,我项目专门给 Claude Code 装跨 project 用户画像。**ChatGPT Memory 不能给 Claude Code 用**(协议不通)。
 >
-> **2. 决策粒度不同**——ChatGPT 闭源,我们不知道它怎么决定记 vs 不记。我项目**决策规则可读可改**:`confidence>=3 AND stability=long_term AND salience>=2 AND use_count>=5` 才进入 promote 候选,LLM 决策都有 reason 留 ops_log。
+> **2. 决策粒度不同**——ChatGPT 闭源,我们不知道它怎么决定记 vs 不记。我项目**决策规则可读可改**:`confidence>=3 AND stability=long_term AND salience>=3 AND use_count>=5` 才进入 promote 候选,LLM 决策都有 reason 留 ops_log。
 >
 > **3. 责任边界不同**——OpenAI 要给 10 亿 user 找 universal taste,我项目只给程序员(同质用户)。**场景具体 → 判断规则可以收敛**,这是大厂没法做的优势。
 >

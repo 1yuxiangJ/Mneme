@@ -486,10 +486,15 @@ COMMIT;
 **为啥**:archival 里"被反复用 + 用户明确说过 + 长期稳定 + 未来有用"的 fact,才该提升到结构化的 core block,成为用户画像的固定一部分。**Sleep 是 core_blocks 的 sole writer**(Letta read-only primary)。
 
 **做啥**:
-1. SQL 找 `use_count >= 5 AND confidence >= 3 AND stability = 'long_term' AND salience >= 2` 的 archival
+1. SQL 找 `use_count >= 5 AND confidence >= 3 AND stability = 'long_term' AND salience >= 3` 的 archival
 2. 把候选 + 当前 core_blocks 喂 LLM(LLM 要看 core 当前内容才能写新值)
 3. LLM 决定哪些 PROMOTE / SKIP,PROMOTE 到哪个 core block,新 block 整段 value 是什么
 4. 应用到 `core_blocks_staging`
+
+**target block 分流规则**:
+- `preferences`:喜欢/不喜欢、价值判断、优先级、选择倾向。
+- `habits`:长期重复行为、生活/工作节奏、常见放松方式。
+- 细颗粒生活事实(某个食物、某个游戏模式、设备一时在不在身边)默认留在 archival;只有它表达出更高层的长期模式时才概括进 core。
 
 **例子**:
 - 候选 archival:

@@ -49,6 +49,7 @@
 - `src/mneme/sleep/tools.py` / `src/mneme/sleep/prompts.py`
   - promote 候选改为:
     `use_count >= 5 AND confidence >= 3 AND stability='long_term' AND salience >= 2`
+    - 注:Day 26 已进一步收紧为 `salience >= 3`,避免中显著生活细节进入 core。
   - demote 候选改为:
     stale 且 `(confidence <= 1 OR stability='temporary' OR salience <= 1)`
   - consolidate/search/reflection 输出带上新信号

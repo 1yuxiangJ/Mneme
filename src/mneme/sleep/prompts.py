@@ -100,7 +100,7 @@ Current core blocks (do not duplicate existing content):
 {core_blocks_json}
 
 Candidate archival facts (high use_count + confidence=3 + stability=long_term
-+ salience>=2):
++ salience=3):
 {candidates_json}
 
 The 5 core blocks: background, preferences, habits, skills, lessons_learned.
@@ -131,7 +131,13 @@ Rules:
 - PROMOTE only if the fact is general, durable, and useful across future
   conversations.
 - Treat stability and salience as hard safety signals: never promote temporary
-  facts or low-salience trivia even if phrased confidently.
+  facts or medium/low-salience trivia even if phrased confidently.
+- Route core updates by semantics:
+  preferences = likes/dislikes, values, priorities, and choice tendencies;
+  habits = repeated behaviors, routines, rhythms, and ways the user spends time.
+- Keep core values generalized. Do not promote fine-grained lifestyle details
+  such as a specific food, game mode, device location, or one-off context unless
+  they reveal a broader high-salience pattern.
 - If unsure, SKIP.
 """
 
