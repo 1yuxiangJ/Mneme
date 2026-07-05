@@ -669,11 +669,27 @@ archival 层不强求全局一致,因为它保留的是"用户曾经表达过什
 
 **做啥**:
 1. 读取 `core_blocks_staging`
-2. 读取 active archival 中显著事实,作为当前支撑证据
+2. 读取 active archival 中按 `salience DESC, confidence DESC, use_count DESC, id DESC` 排序靠前的一批事实,作为当前支撑证据
 3. 读取最近 20 条 `memory_ops_log`
 4. 喂 LLM `CORE_REFRESH_PROMPT`,要求判断每个 core block 是 `REFRESH` 还是 `KEEP`
 5. 对 `REFRESH` 的 block 写入完整新 value,`version + 1`,`last_writer='sleep_agent'`
 6. 生成 `pending_ops(op_type='sleep_core_refresh')`
+
+**为什么不只加载新增 fact?**
+
+新增 fact 只能帮助发现"被新事实覆盖"的过期内容,但不能判断 core 里的老内容是否仍然合理。比如 core 里有"用户喜欢麦当劳现炸薯条",这一轮没有任何新增 fact 提到薯条;如果只看新增 fact,LLM 无法判断这句话是仍然有效、已经过时,还是只是过细不该在 core。`core_refresh` 要维护的是 core 质量,所以需要一批 active archival 作为"当前仍有效的事实支撑"。
+
+三类输入的分工:
+
+| 输入 | 作用 |
+|---|---|
+| 当前 core | 被审查、可能被重写的对象 |
+| active archival | 当前仍有效的事实支撑,用于判断 core 内容是否有依据 |
+| recent ops log | 说明 core 内容是怎么来的、最近做过哪些维护动作 |
+
+**为什么要看 ops log?**
+
+`memory_ops_log` 不是事实来源,而是变更历史。它能告诉 LLM 某段 core 内容是之前 promote 进来的、resolve 改过的,还是刚被 core_refresh 清理过。例如如果 recent ops 里有 `sleep_promote` 的 reason 写着"Specific food preference that may be referenced in future",LLM 就能判断这类内容更适合留在 archival,不适合常驻 core。它也能看到最近是否刚收紧过 promote 规则,避免把刚清掉的低显著细节又写回去。
 
 **它会清什么**:
 - 已经过期的阶段性内容

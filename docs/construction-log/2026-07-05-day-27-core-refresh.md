@@ -53,6 +53,36 @@ snapshot -> plan -> consolidate -> promote -> demote -> resolve
 - 沟通偏好、职业优先级、稳定习惯
 - 只是暂时没被 recall 命中的核心画像
 
+## 输入上下文设计
+
+用户追问:
+
+> core_refresh 只把新增 fact 加载进去不行吗?为什么还要看 ops_log?
+
+结论:不行。`core_refresh` 不是只处理"新事实覆盖旧事实",它还要处理
+"core 里有过细内容,但近期没有新事实触发它"这类质量问题。
+
+三类输入分工:
+
+| 输入 | 作用 |
+|---|---|
+| 当前 core_blocks_staging | 被审查、可能被重写的对象 |
+| active archival top-K | 当前仍有效的事实支撑,按 salience / confidence / use_count 排序 |
+| recent memory_ops_log | 说明 core 内容是怎么来的、最近做过哪些维护动作 |
+
+只看新增 fact 的缺口:
+
+- 能发现"用户最近开始重新用 IDEA"这类新事实覆盖旧事实。
+- 不能发现"core 里有麦当劳薯条这种过细内容,但这一轮没有新增薯条 fact"。
+
+`memory_ops_log` 的作用不是提供事实来源,而是提供变更历史。它能告诉 LLM:
+
+- 某段 core 内容是否由之前的 `sleep_promote` 写入。
+- 写入时的 reason 是否已经说明它只是低频/可引用信息。
+- 最近是否刚通过 `sleep_core_refresh` 或 `sleep_resolve` 清理过类似内容。
+
+这样可以避免低显著细节被反复写回 core。
+
 ## 代码改动
 
 - `src/mneme/sleep/prompts.py`

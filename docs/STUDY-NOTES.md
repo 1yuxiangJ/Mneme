@@ -2612,6 +2612,16 @@ sleep/agent.py: run_sleep_cycle()
     │ 耗时: ~2-4 秒
     ▼
 
+core_refresh 的输入不是"只看新增 fact"。它读取三类上下文:
+
+| 输入 | 作用 |
+|---|---|
+| 当前 core_blocks_staging | 被审查、可能被重写的对象 |
+| active archival top-K | 当前仍有效的事实支撑,按 salience / confidence / use_count 排序 |
+| recent memory_ops_log | 说明 core 内容是怎么来的、最近做过哪些维护动作 |
+
+只看新增 fact 只能发现"新事实覆盖旧事实",不能发现"core 里有过细内容但近期没有新事实提到它"。例如 core 里有"用户喜欢麦当劳现炸薯条",这一轮没有新增薯条相关 fact;只看新增 fact 时,LLM 不知道它是否仍有效、是否过细、是否应该保留。active archival 让 LLM 判断 core 内容是否仍有事实支撑,recent ops log 让 LLM 看到这段内容当初是 promote 进来的还是刚被 refresh 清理过,避免反复写回低显著细节。
+
 [⑨ node_swap]
     │ if aborted: cleanup_staging + return
     │ if snapshot_ts is None: cleanup_staging + return
