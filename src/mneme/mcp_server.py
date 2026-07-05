@@ -14,7 +14,6 @@ unreachable.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -24,11 +23,11 @@ from mcp.server.fastmcp import FastMCP
 from mneme.awake.agent import run_awake as _run_awake
 from mneme.config import settings
 from mneme.db.models import get_sessionmaker
+from mneme.memory.jobs import enqueue_awake_write
 from mneme.memory.store import get_memory_overview, list_archival_facts
 from mneme.sleep.scheduler import mark_awake_activity
 
 logger = logging.getLogger("mneme.mcp")
-_background_awake_tasks: set[asyncio.Task[dict[str, Any]]] = set()
 
 
 async def run_awake(command: str) -> dict[str, Any]:
@@ -40,34 +39,28 @@ async def run_awake(command: str) -> dict[str, Any]:
     return await _run_awake(command)
 
 
-def _schedule_awake_write(command: str, operation: str) -> dict[str, Any]:
-    """Schedule write-side Awake work and return immediately.
+async def _enqueue_awake_write(
+    command: str,
+    operation: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist write-side Awake work and return immediately.
 
-    `remember` and `forget` are eventually consistent. They should not block
-    Claude Code's current response on LLM, embedding, and database write latency.
+    `remember` and `forget` are eventually consistent, but durable: accepted
+    means the job has been committed to PostgreSQL and can survive process
+    restart before the background worker executes it.
     """
     mark_awake_activity()
-    task = asyncio.create_task(_run_awake(command))
-    _background_awake_tasks.add(task)
-
-    def _log_background_result(done: asyncio.Task[dict[str, Any]]) -> None:
-        _background_awake_tasks.discard(done)
-        try:
-            result = done.result()
-        except Exception:
-            logger.exception("background %s task failed", operation)
-            return
-        if result.get("status") not in (None, "ok"):
-            logger.warning("background %s task returned %s", operation, result)
-
-    task.add_done_callback(_log_background_result)
+    job = await enqueue_awake_write(operation, command, payload)
     return {
         "status": "accepted",
-        "mode": "async",
+        "mode": "durable_async",
         "operation": operation,
+        "job_id": job.id,
+        "job_status": job.status,
         "message": (
-            f"{operation} request accepted; memory write will be processed "
-            "in the background."
+            f"{operation} request accepted; durable job {job.id} will be "
+            "processed in the background."
         ),
     }
 
@@ -141,7 +134,17 @@ async def remember(
         f"  salience: {salience}\n"
         "First check for near-duplicates via search_archival, then insert."
     )
-    return _schedule_awake_write(cmd, "remember")
+    return await _enqueue_awake_write(
+        cmd,
+        "remember",
+        {
+            "content": content,
+            "tags": tags or [],
+            "confidence": confidence,
+            "stability": stability,
+            "salience": salience,
+        },
+    )
 
 
 @mcp.tool()
@@ -218,4 +221,8 @@ async def forget(fact_id: int, reason: str) -> dict[str, Any]:
         reason: Why we're forgetting it.
     """
     cmd = f"forget archival fact id={fact_id}; reason={reason}"
-    return _schedule_awake_write(cmd, "forget")
+    return await _enqueue_awake_write(
+        cmd,
+        "forget",
+        {"fact_id": fact_id, "reason": reason},
+    )

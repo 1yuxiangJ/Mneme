@@ -37,13 +37,17 @@ async def health(_request: Request) -> JSONResponse:
 async def lifespan(_app: Starlette) -> AsyncIterator[None]:
     """Startup + shutdown hooks."""
     logger.info("mneme startup; mcp at %s", settings.mcp_server_path)
+    from mneme.memory.worker import start_memory_write_worker, stop_memory_write_worker
     from mneme.sleep.scheduler import start_sleep_scheduler
+
     scheduler = start_sleep_scheduler()
+    memory_worker = start_memory_write_worker()
     async with mcp.session_manager.run():
         try:
             yield
         finally:
             logger.info("mneme shutdown")
+            await stop_memory_write_worker(memory_worker)
             if scheduler is not None:
                 scheduler.shutdown(wait=False)
             await dispose_engine()

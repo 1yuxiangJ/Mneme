@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     awake_llm_max_retries: int = 1
     awake_overall_timeout_seconds: float = 45.0
 
+    # ----- Durable write queue (remember / forget) -----
+    memory_write_worker_enabled: bool = True
+    memory_write_worker_poll_seconds: float = 1.0
+    memory_write_worker_max_attempts: int = 3
+    memory_write_job_stale_seconds: int = 300
+
     # ----- Embedding cache -----
     embedding_cache_size: int = 256
 

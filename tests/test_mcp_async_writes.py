@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -11,40 +10,41 @@ from mneme.memory.store import CoreBlockSnapshot, MemoryOverview
 
 
 @pytest.mark.asyncio
-async def test_remember_returns_accepted_without_awaiting_awake(monkeypatch):
-    started = asyncio.Event()
-    release = asyncio.Event()
+async def test_remember_enqueues_durable_job_without_awaiting_awake(monkeypatch):
+    captured: dict[str, object] = {}
 
-    async def slow_awake(command: str) -> dict[str, str]:
-        started.set()
-        await release.wait()
-        return {"status": "ok"}
+    async def fail_awake(command: str) -> dict[str, str]:
+        raise AssertionError(f"remember should not call Awake directly: {command}")
 
-    monkeypatch.setattr(mcp_server, "_run_awake", slow_awake)
+    async def enqueue_awake_write(operation, command, payload):
+        captured["operation"] = operation
+        captured["command"] = command
+        captured["payload"] = payload
+        return SimpleNamespace(id=42, status="pending", dedupe_key="abc123")
+
+    monkeypatch.setattr(mcp_server, "_run_awake", fail_awake)
+    monkeypatch.setattr(mcp_server, "enqueue_awake_write", enqueue_awake_write)
 
     result = await mcp_server.remember("User prefers direct answers.", ["preference"], 3)
 
     assert result["status"] == "accepted"
-    assert result["mode"] == "async"
+    assert result["mode"] == "durable_async"
     assert result["operation"] == "remember"
-    assert started.is_set() is False
-
-    await asyncio.wait_for(started.wait(), timeout=1)
-    release.set()
+    assert result["job_id"] == 42
+    assert captured["operation"] == "remember"
+    assert "User prefers direct answers." in str(captured["command"])
 
 
 @pytest.mark.asyncio
 async def test_remember_command_includes_memory_signals(monkeypatch):
-    started = asyncio.Event()
     captured_command = ""
 
-    async def awake(command: str) -> dict[str, str]:
+    async def enqueue_awake_write(operation, command, payload):
         nonlocal captured_command
         captured_command = command
-        started.set()
-        return {"status": "ok"}
+        return SimpleNamespace(id=43, status="pending", dedupe_key="def456")
 
-    monkeypatch.setattr(mcp_server, "_run_awake", awake)
+    monkeypatch.setattr(mcp_server, "enqueue_awake_write", enqueue_awake_write)
 
     result = await mcp_server.remember(
         "User currently mainly plays CS2.",
@@ -55,10 +55,31 @@ async def test_remember_command_includes_memory_signals(monkeypatch):
     )
 
     assert result["status"] == "accepted"
-    await asyncio.wait_for(started.wait(), timeout=1)
     assert "confidence: 3" in captured_command
     assert "stability: stage" in captured_command
     assert "salience: 2" in captured_command
+
+
+@pytest.mark.asyncio
+async def test_forget_enqueues_durable_job(monkeypatch):
+    captured: dict[str, object] = {}
+
+    async def enqueue_awake_write(operation, command, payload):
+        captured["operation"] = operation
+        captured["command"] = command
+        captured["payload"] = payload
+        return SimpleNamespace(id=44, status="pending", dedupe_key="ghi789")
+
+    monkeypatch.setattr(mcp_server, "enqueue_awake_write", enqueue_awake_write)
+
+    result = await mcp_server.forget(7, "outdated")
+
+    assert result["status"] == "accepted"
+    assert result["mode"] == "durable_async"
+    assert result["operation"] == "forget"
+    assert result["job_id"] == 44
+    assert captured["operation"] == "forget"
+    assert captured["payload"] == {"fact_id": 7, "reason": "outdated"}
 
 
 @pytest.mark.asyncio

@@ -832,6 +832,45 @@ Hibernate                     ← JPA 的具体实现,生成 SQL
 
 **关键 side-effect**:`mark_awake_activity()` 在每个 tool 入口调一次,把 idle 计时归零——这是 Sleep 触发器的数据源。
 
+### §3.1.1 · 写请求 durable queue
+
+Day 29 之后,`remember` / `forget` 不再直接 `asyncio.create_task(_run_awake(...))`。
+
+旧流程的问题:
+
+```text
+MCP 返回 accepted
+→ 后台任务只在 Python 内存里
+→ Mneme 进程崩溃
+→ 这次 remember / forget 可能丢
+```
+
+新流程:
+
+```text
+remember / forget
+→ INSERT memory_write_jobs(status='pending')
+→ COMMIT 成功后返回 accepted + job_id
+→ memory worker 后台 claim job
+→ worker 复用 Awake agent 执行原来的 command
+→ 成功 status='succeeded';失败按 5s / 30s / 120s 重试
+```
+
+这个改动没有把写请求改成同步,所以不会把 LLM + embedding 延迟压到
+Claude Code 当前回答上;但 `accepted` 的语义从"内存任务已创建"升级成了
+"写入意图已持久化"。
+
+四个 MCP tool 的路径现在是:
+
+| 工具 | 路径 | 语义 |
+|---|---|---|
+| `remember` | `memory_write_jobs` → worker → Awake | durable async write |
+| `forget` | `memory_write_jobs` → worker → Awake | durable async write |
+| `recall` | 同步 Awake | 当前回答需要结果 |
+| `list_memory` | direct DB fast path | 稳定低成本启动概览 |
+
+> 面试话术:"我没有直接引 Kafka/Redis Stream,因为写入瓶颈在 LLM/embedding,不是消息吞吐。MVP 用 PostgreSQL durable queue,accepted 前先落库,worker 异步复用 Awake 执行,复杂度和可靠性更匹配。后续可以把 queue adapter 换成 Redis Stream/Kafka。"
+
 ## §3.2 · ② Agent 层
 
 两个 agent 并存,**生命周期不重叠**:
@@ -2297,10 +2336,13 @@ mcp_server.py: @mcp.tool() remember(...)
     │ 1. mark_awake_activity()        ← scheduler.py module 变量更新
     │ 2. 包装 command 字符串
     │    "remember this fact about the user: \n  content: ... \n  tags: preference \n  confidence: 3"
-    │ 3. asyncio.create_task(_run_awake(command))
-    │ 4. 立刻返回 {"status":"accepted","mode":"async"}
+    │ 3. INSERT memory_write_jobs(operation='remember', status='pending', ...)
+    │ 4. COMMIT 成功后立刻返回 {"status":"accepted","mode":"durable_async","job_id":42}
     ▼
-后台任务: awake/agent.py: run_awake(command)
+memory worker:
+    │ claim job: pending → running
+    ▼
+awake/agent.py: run_awake(command)
     │ - get_awake_agent() (lazy singleton)
     │ - agent.ainvoke({"messages": [("user", command)]})
     ▼
@@ -2350,13 +2392,13 @@ LangGraph create_react_agent (LLM B: DeepSeek)
     │ │ → "后台记忆写入完成: fact_id=123"                    │
     │ └─────────────────────────────────────────────────────┘
     ▼
-后台返回 dict {"status": "ok", "final_message": "...", "step_count": 6}
+Awake 返回 dict {"status": "ok", "final_message": "...", "step_count": 6}
     │
     ▼
-mcp_server.py: MCP response 早已返回 accepted;后台结果只进入日志/服务日志
+memory worker: UPDATE memory_write_jobs SET status='succeeded', result=...
     │
     ▼
-Claude Code 不会等这个后台结果;用户侧只看到前面已返回的 accepted/已收到
+Claude Code 不会等这个后台结果;用户侧只看到前面已返回的 accepted + job_id
 ```
 
 ### 调用次数清算
@@ -2441,19 +2483,19 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 #### 3. 【已完成】写异步、读同步
 
-**当前现状**:`remember` / `forget` 在 MCP 层快速返回 `{"status":"accepted","mode":"async"}`,后台 `asyncio.create_task(_run_awake(command))` 继续跑 ReAct。`recall` 仍然同步走 Awake,因为 Claude Code 要拿语义搜索结果才能回答用户。`list_memory` 同步返回,但已经改成 direct DB fast path,不再走 Awake/DeepSeek。
+**当前现状**:`remember` / `forget` 在 MCP 层先写 `memory_write_jobs`,提交成功后快速返回 `{"status":"accepted","mode":"durable_async","job_id":...}`,后台 worker 复用 Awake 继续跑 ReAct。`recall` 仍然同步走 Awake,因为 Claude Code 要拿语义搜索结果才能回答用户。`list_memory` 同步返回,但已经改成 direct DB fast path,不再走 Awake/DeepSeek。
 
 **按工具语义区分同步/异步**:
 
 | 工具类型 | 同步/异步 | 理由 |
 |---|---|---|
-| **`remember` / `forget`**(写) | **可异步 fire-and-forget** | 用户不等结果,立刻返回"已收到",后台跑 Awake |
+| **`remember` / `forget`**(写) | **durable async** | 用户不等结果,但 accepted 前写入意图先落 PG job 表 |
 | **`recall`**(读 + 语义搜索) | **必须同步,走 Awake** | Claude Code 要拿召回结果才能回答用户 |
 | **`list_memory`**(读 + 概览) | **必须同步,直读 DB** | 新 session 起手要稳定拿到用户画像,不应该依赖 LLM provider |
 
-异步的代价:写类工具异步后**MCP 调用方拿不到 fact_id、拿不到同步去重结果、失败只进服务日志**。所以"写异步"成立的前提是 **写操作不需要同步返回信息**。
+异步的代价:写类工具异步后**MCP 调用方拿不到 fact_id、拿不到同步去重结果、只能拿到 job_id**。所以"写异步"成立的前提是 **写操作不需要同步返回 fact_id**。现在失败不再只进服务日志,还会落在 `memory_write_jobs.last_error/status` 里。
 
-> 面试话术:"Mneme 按工具语义做同步/异步拆分:写类工具 remember/forget 立刻 accepted,后台跑 Awake ReAct;读类 recall 同步走 Awake,因为它需要语义检索和上下文组织;list_memory 同步但直读 DB,作为新 session 的稳定启动路径。这个取舍用最终一致换写入延迟,用 direct DB fast path 降低读概览的成本和故障面。"
+> 面试话术:"Mneme 按工具语义做同步/异步拆分:写类工具 remember/forget 先落 PostgreSQL durable job,再由 worker 异步复用 Awake ReAct;读类 recall 同步走 Awake,因为它需要语义检索和上下文组织;list_memory 同步但直读 DB,作为新 session 的稳定启动路径。这个取舍用最终一致换写入延迟,同时把 accepted 后进程崩溃丢消息的问题收敛到可恢复的 pending job。"
 
 ---
 
@@ -3919,7 +3961,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | # | 优化点 | 现状 | 怎么改 | 出处 |
 |---|---|---|---|---|
 | 1 | **embedding 复用** | Day 14 已做:进程内 embedding cache,同文本复用向量 | 后续可加跨进程 cache / provider 级别 metrics | §5.1 讨论补录 |
-| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | Day 24 已记录缺口:当前 accepted 后后台任务可能丢;后续上持久化 `memory_write_jobs/outbox` + retry + 状态查询 + dead-letter | §5.1 讨论补录 |
+| 2 | **写异步、读同步** | Day 29 已升级:`remember`/`forget` 先落 `memory_write_jobs`,再由 worker 异步跑 Awake;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | 后续可加 MCP job 状态查询、自动清理 succeeded job、队列 metrics | §5.1 讨论补录 |
 | 3 | **swap 字段级合并** | swap 整行覆盖,丢 cycle 期间 Awake 的 use_count 更新 | 按字段分归属:语义字段(content/confidence)取 staging,统计字段(use_count/last_used)取主表回填 | §4.4 Q3 |
 | 4 | **大数据量放弃整表复制** | snapshot 整表复制到 staging,100 万行扛不住 | 改 MVCC 快照读(REPEATABLE READ,不锁不复制)+ 短事务只 apply 改动的少数行 | §4.4 Q1 |
 | 5 | **swap 加 lock_timeout** | Day 14 已做:swap transaction 内设置 `lock_timeout=500ms` | 后续可加 retry/backoff 和失败告警 | §4.4 Q2 |
@@ -3928,7 +3970,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 8 | **可信置信度用 logprobs**(可选) | confidence 由 LLM 正文自报(没校准) | 真要细粒度可信置信度:读 token logprobs + 校准(temperature/Platt scaling) | §4.2 Q3 |
 | 9 | **embedding defer-write** | MVP 是 fail-fast:embedding 失败 fact 不入库 | fact 先入库(embedding=NULL)+ 后台 backlog worker 补 | §6.2 |
 | 10 | **idle 计时持久化** | 存进程内存变量,重启归零 | 启动时从 ops_log 推算最近活动时间(零写放大) | §6.4 |
-| 11 | **异步写入持久化队列** | `remember`/`forget` 是 `asyncio.create_task` fire-and-forget;`accepted` 不保证最终落库 | 先写 `memory_write_jobs(status=pending,payload_json,attempt_count,last_error)`,worker 重试,失败进 dead-letter,提供 job 状态查询 | §5.1 / Day 24 |
+| 11 | **异步写入持久化队列** | Day 29 已做:`remember`/`forget` accepted 前先写 `memory_write_jobs`;worker claim 后复用 Awake,失败重试并记录 `last_error` | 后续可加 dead-letter 分区、管理 UI、Redis Stream/Kafka adapter | §5.1 / Day 24 / Day 29 |
 | 11 | **ops_log append-only DB 强制** | 应用层自律,DB 没拦 UPDATE/DELETE | PG trigger `BEFORE UPDATE/DELETE RAISE EXCEPTION` 或 `REVOKE` | §4.3 / §7 ① |
 | 12 | **resolve 独立 op_type** | Day 14 已做:resolve 生成 `sleep_resolve`;Day 15 改为 pending op,swap 成功后写入主日志 | 后续可在 inspect 输出里单独分组展示 | §4.3 |
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
@@ -3960,7 +4002,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 - 防死循环:显式 `recursion_limit=8` + T=0 收敛 + prompt 引导 finalize → 实际 remember 3 步左右
 - 防单步卡住:`ChatOpenAI(timeout=20, max_retries=1)`
 - 防整体卡住:`asyncio.wait_for(..., timeout=45)`
-- 防写类拖慢体验:`remember` / `forget` MCP 层快速返回 accepted,后台执行
+- 防写类拖慢体验:`remember` / `forget` MCP 层快速返回 accepted + job_id,后台 worker 执行
 
 ---
 
@@ -3986,14 +4028,14 @@ WHERE a.embedding <=> b.embedding < 0.15;
 1. **限步数**:`agent.ainvoke(..., config={"recursion_limit": 8})`
 2. **限单步 LLM**:`ChatOpenAI(..., timeout=20, max_retries=1)`
 3. **限整体**:`asyncio.wait_for(..., timeout=45)`
-4. **写类异步**:`remember` / `forget` 立刻返回 accepted,后台跑 Awake
+4. **写类 durable async**:`remember` / `forget` 先落 `memory_write_jobs`,再返回 accepted + job_id,后台 worker 跑 Awake
 
 → 这四层分别处理"步数失控 / 单步 API 慢 / 组合爆炸 / 用户等待体验"。
 
 ## 3. 影响范围
 
 - 阻塞的是**那一次 Awake 请求**(不是整个服务——asyncio 事件循环还能处理别的请求)
-- 对写类工具:`remember` / `forget` 已不阻塞 Claude Code 当前回答,因为 MCP 层先返回 accepted
+- 对写类工具:`remember` / `forget` 已不阻塞 Claude Code 当前回答,因为 MCP 层先返回 accepted + job_id
 - 对读类工具:`recall` 仍同步走 Awake,有整体 45s 兜底;`list_memory` 已改为 direct DB fast path,不受 Awake/DeepSeek 超时影响
 - 不会数据损坏(Awake tool 安全幂等),纯粹是**延时/体验**问题
 
@@ -4021,14 +4063,14 @@ result = await asyncio.wait_for(_run_awake(command), timeout=45)
 - 挡:场景 D(组合爆炸)。整个 ReAct loop 45s 没跑完直接砍,返回降级响应
 - 代价:接近上限的合法慢请求被砍
 
-**第 4 层:写类异步(根治体验问题)**
+**第 4 层:写类 durable async(根治体验问题)**
 ```python
-# remember / forget 改 fire-and-forget
-asyncio.create_task(_run_awake(command))   # 不 await,立刻返回 "已收到"
-return {"status": "queued"}
+# remember / forget 先持久化 job,再后台执行
+job = await enqueue_awake_write(operation, command, payload)
+return {"status": "accepted", "mode": "durable_async", "job_id": job.id}
 ```
 - 挡:**从"减少卡时长"升级到"用户根本不等"**(回到 §5.1 写异步讨论)
-- 代价:写类失去同步去重 + fact_id 返回 + 失败用户不知道(需后台失败队列)
+- 代价:写类失去同步去重 + fact_id 返回;失败通过 job status/last_error 观察,不是直接同步返回
 - 注意:**读类不能异步**,必须同步返回结果;但不是所有读都要走 Awake。`list_memory` 这种确定性概览已经直读 DB。
 
 → **组合策略**:1+2+3 是"防卡死"(限步数+限单步+限整体),4 是"防体验拖累"(写类不让等)。读类靠 1+2+3,写类靠 4。
@@ -4044,7 +4086,7 @@ return {"status": "queued"}
 
 ## 6. 一句话面试话术
 
-> "Awake ReAct 的风险我按四层拆:限步数、限单步、限整体、写类异步。现在代码里 `recursion_limit=8`,LLM `timeout=20s,max_retries=1`,外层 `wait_for=45s`;同时 remember/forget 快速返回 accepted 后台处理,recall 同步但有超时兜底。list_memory 不再走 Awake,而是 direct DB fast path,作为新 session 的可靠用户画像入口。剩余短板是监控和后台失败队列,这是后续生产化项。"
+> "Awake ReAct 的风险我按四层拆:限步数、限单步、限整体、写类 durable async。现在代码里 `recursion_limit=8`,LLM `timeout=20s,max_retries=1`,外层 `wait_for=45s`;同时 remember/forget accepted 前先落 PostgreSQL job 表,后台 worker 复用 Awake 处理,recall 同步但有超时兜底。list_memory 不再走 Awake,而是 direct DB fast path,作为新 session 的可靠用户画像入口。剩余短板是 metrics、自动清理 succeeded job 和更强的队列管理。"
 
 → 这个回答的价值:**把模糊的"会不会卡死"拆成"步数维度 + 单步维度 + 整体维度"三个可独立处理的问题,每个给代码级方案 + 代价 + 监控**。这是 senior 级的故障分析能力。
 

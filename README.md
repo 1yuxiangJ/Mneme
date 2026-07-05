@@ -28,27 +28,32 @@ flowchart TB
     subgraph mneme[mneme service · localhost:8000]
         direction TB
         MCP[MCP server<br/>FastMCP + 4 tools<br/>remember / recall<br/>list_memory / forget]
+        MW[Memory Write Queue<br/>memory_write_jobs + worker<br/>durable async writes]
         AW[Awake Agent<br/>LangGraph ReAct<br/>read core<br/>read/write archival]
         SCH[Sleep Scheduler<br/>APScheduler<br/>idle ≥30min<br/>cron 03:00]
-        SL[Sleep Agent<br/>LangGraph StateGraph<br/>8-phase cycle<br/>SOLE writer of core]
+        SL[Sleep Agent<br/>LangGraph StateGraph<br/>9-phase cycle<br/>SOLE writer of core]
         ST[memory.store<br/>3-layer permission guard]
 
         subgraph DB[PostgreSQL + pgvector]
             CB[core_blocks<br/>5 fixed labels<br/>last_writer = sleep_agent]
             AF[archival_facts<br/>+ vector 1024<br/>+ HNSW index]
+            JQ[memory_write_jobs<br/>durable queue]
             LG[memory_ops_log<br/>audit append-only]
             STG[*_staging<br/>Sleep working tables]
         end
     end
 
     CC -- streamable-http --> MCP
-    MCP --> AW
+    MCP -- remember/forget --> MW
+    MCP -- recall --> AW
+    MW --> AW
     AW --> ST
     SCH --> SL
     SL --> ST
     SL -- snapshot/swap --> STG
     ST --> CB
     ST --> AF
+    MW --> JQ
     ST --> LG
 ```
 
@@ -64,7 +69,7 @@ flowchart TB
 2. **Read-only primary 三道保险** —— Awake system prompt 教别尝试,应用层 `PermissionError`,DB `last_writer` 自检字段。
 3. **Plan-driven cycle** —— Sleep 第一步让 LLM 自主决定本次跑哪些 phase,不是固定 cron。
 4. **Staging snapshot + atomic swap** —— Sleep 不阻塞 Awake,异常时 main 完全不受影响。
-5. **MCP 协议接入** —— 标准化集成,理论可接 Cursor / Cline / 自建 agent。
+5. **Durable async writes** —— `remember` / `forget` accepted 前先落 `memory_write_jobs`,后台 worker 再复用 Awake,避免内存后台任务崩溃丢消息。
 
 ---
 
@@ -93,7 +98,7 @@ service 时需要在项目目录运行。
 
 ## 当前状态
 
-🟢 **Day 10(2026-07-02):Sleep snapshot sequence repair 完成**
+🟢 **Day 29(2026-07-05):Durable write queue 完成**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -106,6 +111,7 @@ service 时需要在项目目录运行。
 - ✅ Day 08:demo seed / one-shot demo cycle / demo cleanup / final verification checklist
 - ✅ Day 09:demo seed facts 增加 promotion-ready usage signal,确保 Sleep promote 有候选
 - ✅ Day 10:修复 `archival_facts_id_seq` 缺失导致 Sleep snapshot 失败的问题
+- ✅ Day 29:`remember` / `forget` 改为 PostgreSQL durable queue + worker,避免 accepted 后内存任务丢失
 - ⏸️ 剩余人工项:按 `docs/FINAL_VERIFICATION.md` 录 demo
 
 完整施工记录在 `docs/construction-log/`。
@@ -124,12 +130,14 @@ mneme/
 ├── scripts/run_demo_cycle.py      # seed 可选 + Sleep + inspect 的一键 demo
 ├── scripts/run_sleep_once.py     # 手动触发一次 Sleep cycle
 ├── scripts/inspect_memory.py     # 只读打印 memory / ops_log 快照
+├── scripts/inspect_memory_jobs.py # 只读打印 durable write jobs
+├── scripts/drain_memory_jobs.py   # 手动处理 pending durable write jobs
 ├── src/mneme/                   # 2103 行 Python · 17 模块
 │   ├── __init__.py / __main__.py / main.py / config.py
 │   ├── mcp_server.py            # MCP 4 tools + activity 标记
 │   ├── db/{schema.sql, models.py}
 │   ├── llm/client.py            # DeepSeek + OpenAI embedding
-│   ├── memory/{store.py, inspect.py}
+│   ├── memory/{store.py, inspect.py, jobs.py, worker.py}
 │   ├── awake/{agent.py, tools.py}
 │   └── sleep/{prompts.py, staging.py, tools.py, agent.py, scheduler.py, cli.py}
 ├── tests/

@@ -39,7 +39,7 @@ Claude Code 回:
 
 ## 场景 2:实时 remember,后台落库后查看(1 min)
 
-**剧本**:跟 Claude Code 透露新偏好,MCP tool 先返回 accepted,后台 Awake ReAct 落库。
+**剧本**:跟 Claude Code 透露新偏好,MCP tool 先返回 accepted + job_id,后台 worker 复用 Awake ReAct 落库。
 
 ```
 你:我决定以后所有项目用 Ruff,不用 Black 了
@@ -50,9 +50,13 @@ Claude Code(trace):
       tags=["preference", "tooling"],
       confidence=3
     )
-  ← {"status": "accepted", "mode": "async", "operation": "remember", ...}
+  ← {"status": "accepted", "mode": "durable_async",
+     "operation": "remember", "job_id": 42, ...}
 
 你(终端 2,等 2-5 秒后):
+  uv run python scripts/inspect_memory_jobs.py --limit 5
+  → memory_write_jobs 里 job 变成 succeeded
+
   uv run python scripts/inspect_memory.py --limit 5
   → archival_facts 里出现最新 fact, recent_ops 里出现 remember 审计记录
 ```

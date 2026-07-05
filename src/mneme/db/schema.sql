@@ -96,6 +96,33 @@ CREATE INDEX IF NOT EXISTS idx_ops_log_actor ON memory_ops_log(actor, ts DESC);
 
 
 -- =============================================================
+-- memory_write_jobs: durable async queue for write-side MCP tools.
+-- remember / forget return accepted only after this row is committed.
+-- A background worker later replays command through Awake and marks status.
+-- =============================================================
+CREATE TABLE IF NOT EXISTS memory_write_jobs (
+    id             BIGSERIAL PRIMARY KEY,
+    operation      TEXT NOT NULL,  -- remember / forget
+    command        TEXT NOT NULL,
+    payload        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    dedupe_key     TEXT NOT NULL UNIQUE,
+    status         TEXT NOT NULL DEFAULT 'pending',
+    attempt_count  INT NOT NULL DEFAULT 0,
+    max_attempts   INT NOT NULL DEFAULT 3,
+    available_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    locked_at      TIMESTAMPTZ,
+    completed_at   TIMESTAMPTZ,
+    last_error     TEXT,
+    result         JSONB,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_write_jobs_claim
+    ON memory_write_jobs(status, available_at, created_at);
+
+
+-- =============================================================
 -- staging tables (built on-the-fly by Sleep agent each cycle).
 -- Defined here for reference only:
 --   CREATE TABLE core_blocks_staging      (LIKE core_blocks      INCLUDING ALL);
