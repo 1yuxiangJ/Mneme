@@ -12,6 +12,8 @@
 }
 ```
 
+注:这是 Day 28 之前的旧 summary 语义,当时 `promote_count` 统计的是模型返回的 promote 判断数量,包含 `SKIP`。Day 28 后 `promote_count` 改为只统计实际 `PROMOTE`,并新增 `promote_candidate_count` 表示候选判断数量。
+
 但结果暴露出 promote 门槛偏宽:一些 `salience=2` 的生活偏好,
 例如具体食物偏好、细颗粒游戏偏好,也被升进了 `core_blocks.preferences`。
 

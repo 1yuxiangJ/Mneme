@@ -113,6 +113,18 @@ def _append_pending_ops(
     }
 
 
+def _count_decision(actions: list[Any] | None, decision: str) -> int:
+    expected = decision.upper()
+    count = 0
+    for action in actions or []:
+        if not isinstance(action, dict):
+            continue
+        actual = str(action.get("decision", "")).upper()
+        if actual == expected:
+            count += 1
+    return count
+
+
 # ---------------------------------------------------------------
 # Nodes
 # ---------------------------------------------------------------
@@ -430,12 +442,15 @@ async def run_sleep_cycle() -> dict[str, Any]:
     if not final_state.get("aborted"):
         _last_cycle_ts = datetime.now(UTC)
 
+    promote_actions = final_state.get("promote_actions") or []
+
     return {
         "status": "aborted" if final_state.get("aborted") else "ok",
         "abort_reason": final_state.get("abort_reason"),
         "plan": final_state.get("plan", []),
         "consolidate_count": len(final_state.get("consolidate_actions") or []),
-        "promote_count": len(final_state.get("promote_actions") or []),
+        "promote_candidate_count": len(promote_actions),
+        "promote_count": _count_decision(promote_actions, "PROMOTE"),
         "demote_count": len(final_state.get("demote_actions") or []),
         "contradictions_count": len(final_state.get("contradictions") or []),
         "core_refresh_count": len(final_state.get("core_refresh_actions") or []),

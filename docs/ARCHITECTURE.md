@@ -772,6 +772,7 @@ COMMIT;
   "status": "ok",
   "plan": ["consolidate", "promote", "core_refresh", "reflect"],
   "consolidate_count": 2,
+  "promote_candidate_count": 5,
   "promote_count": 2,
   "demote_count": 0,
   "contradictions_count": 0,
@@ -791,6 +792,8 @@ COMMIT;
 > **lock_timeout**:`ALTER TABLE RENAME` 需要短暂拿 `ACCESS EXCLUSIVE LOCK`。Mneme 在 swap transaction 内设置 `lock_timeout=500ms`;如果当时撞上慢查询或长事务,本轮 swap 快速失败并清理 staging,不把在线读写堵在队头。
 
 > **pending_ops**:Sleep phase 对 staging 的每次修改都会生成一条日志草稿,暂存在 LangGraph state 里。只有 `atomic_swap` 成功时,这些草稿才会在同一个 transaction 内写入主 `memory_ops_log`。如果 swap 失败,主表不变,日志也不写,避免出现"日志说生效但主表没更新"的审计歧义。
+
+> **promote_candidate_count vs promote_count**:`promote_candidate_count` 是本轮 promote 阶段交给模型评估并返回判断的数量,里面可能包含 `SKIP`;`promote_count` 只统计真正 `decision = PROMOTE`、会改写 core 并生成 `sleep_promote` pending op 的数量。看 Sleep 是否真的改了 core,以 `promote_count` 和 `memory_ops_log.sleep_promote` 为准。
 
 > **ALTER TABLE RENAME**:Postgres 支持在 transaction 内改表名。MySQL 也支持,SQLite 不支持。
 

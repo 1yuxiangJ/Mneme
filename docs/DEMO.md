@@ -112,7 +112,8 @@ uv run python scripts/run_demo_cycle.py --seed --yes
 
 # 输出:
 # {"status": "ok", "plan": ["consolidate", "promote", "reflect"],
-#  "consolidate_count": 3, "promote_count": 2, "reflection_preview": "..."}
+#  "consolidate_count": 3, "promote_candidate_count": 5,
+#  "promote_count": 2, "reflection_preview": "..."}
 ```
 
 ```bash

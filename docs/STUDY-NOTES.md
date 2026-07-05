@@ -2553,6 +2553,8 @@ sleep/agent.py: run_sleep_cycle()
     │     └─ COMMIT staging 修改
     │ state["pending_ops"] += returned drafts
     │ state["promote_actions"] = actions
+    │ summary 里 promote_candidate_count = len(actions)
+    │ summary 里 promote_count = decision == "PROMOTE" 的数量
     │ 耗时: ~2-5 秒
     ▼
 
