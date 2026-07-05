@@ -27,6 +27,8 @@ class DemoFact(TypedDict):
     content: str
     tags: list[str]
     confidence: int
+    stability: str
+    salience: int
     use_count: int
 
 
@@ -38,54 +40,72 @@ DEMO_FACTS: list[DemoFact] = [
         ),
         "tags": ["demo-seed", "career", "backend"],
         "confidence": 3,
+        "stability": "stage",
+        "salience": 3,
         "use_count": 6,
     },
     {
         "content": "User is building Mneme as an agent infrastructure resume project.",
         "tags": ["demo-seed", "project", "agent"],
         "confidence": 3,
+        "stability": "stage",
+        "salience": 3,
         "use_count": 6,
     },
     {
         "content": "User prefers direct, concrete, engineering-oriented Chinese explanations.",
         "tags": ["demo-seed", "communication", "preference"],
         "confidence": 3,
+        "stability": "long_term",
+        "salience": 3,
         "use_count": 7,
     },
     {
         "content": "User dislikes vague questions and empty high-level phrasing.",
         "tags": ["demo-seed", "communication", "preference"],
         "confidence": 3,
+        "stability": "long_term",
+        "salience": 3,
         "use_count": 6,
     },
     {
         "content": "User wants agent projects to show real engineering value, not feel like toys.",
         "tags": ["demo-seed", "product", "preference"],
         "confidence": 3,
+        "stability": "long_term",
+        "salience": 3,
         "use_count": 6,
     },
     {
         "content": "User is interested in long-term memory agents inspired by Letta.",
         "tags": ["demo-seed", "agent", "memory"],
         "confidence": 3,
+        "stability": "stage",
+        "salience": 2,
         "use_count": 5,
     },
     {
         "content": "User named the project Mneme after considering memory-related names.",
         "tags": ["demo-seed", "project", "naming"],
         "confidence": 2,
+        "stability": "stage",
+        "salience": 1,
         "use_count": 2,
     },
     {
         "content": "User prefers Java backend framing when explaining engineering trade-offs.",
         "tags": ["demo-seed", "backend", "communication"],
         "confidence": 2,
+        "stability": "stage",
+        "salience": 2,
         "use_count": 3,
     },
     {
         "content": "User wants GitHub commits pushed periodically during project construction.",
         "tags": ["demo-seed", "workflow", "github"],
         "confidence": 2,
+        "stability": "stage",
+        "salience": 2,
         "use_count": 3,
     },
     {
@@ -95,18 +115,24 @@ DEMO_FACTS: list[DemoFact] = [
         ),
         "tags": ["demo-seed", "workflow", "preference"],
         "confidence": 3,
+        "stability": "stage",
+        "salience": 2,
         "use_count": 6,
     },
     {
         "content": "User uses DataGrip to inspect the local PostgreSQL database.",
         "tags": ["demo-seed", "tooling", "database"],
         "confidence": 2,
+        "stability": "stage",
+        "salience": 1,
         "use_count": 2,
     },
     {
         "content": "User's local Mneme project lives at /Users/mac/dream.",
         "tags": ["demo-seed", "environment", "mneme"],
         "confidence": 3,
+        "stability": "stage",
+        "salience": 1,
         "use_count": 5,
     },
 ]
@@ -156,6 +182,8 @@ async def seed_demo_memory() -> dict[str, Any]:
                 content=fact["content"],
                 tags=fact["tags"],
                 confidence=fact["confidence"],
+                stability=fact["stability"],
+                salience=fact["salience"],
                 source="demo-seed",
                 actor="awake_agent",
                 reason="Seeded demo memory for Sleep promote/consolidate rehearsal.",

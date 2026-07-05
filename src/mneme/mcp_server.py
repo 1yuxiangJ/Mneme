@@ -88,6 +88,8 @@ async def remember(
     content: str,
     tags: list[str] | None = None,
     confidence: int = 2,
+    stability: str = "long_term",
+    salience: int = 2,
 ) -> dict[str, Any]:
     """Store a fact about the user.
 
@@ -108,22 +110,26 @@ async def remember(
     Project-specific facts (architecture, library choices, project conventions)
     belong in CLAUDE.md or Claude Code's per-project auto memory instead.
 
-    Confidence policy:
-    - 3 = stable long-term fact explicitly stated by the user. Suitable for
-      later Sleep promotion if it is reused.
-    - 2 = useful but stage-specific, recent, or may change soon. Keep in
-      archival memory but do not treat as core identity yet.
-    - 1 = weakly confirmed, inferred, tentative, or needs later correction.
+    Memory signal policy:
+    - confidence = factual certainty: 3=user explicitly said it,
+      2=reasonable but not fully confirmed, 1=inferred/tentative.
+- stability = time horizon: "long_term", "stage" (stage-specific), or
+  "temporary".
+    - salience = future usefulness: 3=strongly affects future collaboration,
+      2=useful in related contexts, 1=minor/passive reference.
 
     If a user message mixes stable long-term facts with temporary details,
-    split them into separate memories with different confidence values, or skip
-    the temporary detail. Do not package the whole message as confidence=3.
+    split them into separate memories with different stability/salience values,
+    or skip the temporary detail. Do not package the whole message as a single
+    high-salience long_term memory.
 
     Args:
         content: The fact about the user.
         tags: Topical tags, e.g. ["preference", "code-style", "hobby",
             "lifestyle", "entertainment"].
-        confidence: 1=low/tentative, 2=stage-specific, 3=stable long-term.
+        confidence: 1=tentative, 2=partly confirmed, 3=explicitly stated.
+        stability: "long_term", "stage", or "temporary".
+        salience: 1=low, 2=medium, 3=high future usefulness.
     """
     tag_str = ", ".join(tags) if tags else "(none)"
     cmd = (
@@ -131,6 +137,8 @@ async def remember(
         f"  content: {content}\n"
         f"  tags: {tag_str}\n"
         f"  confidence: {confidence}\n"
+        f"  stability: {stability}\n"
+        f"  salience: {salience}\n"
         "First check for near-duplicates via search_archival, then insert."
     )
     return _schedule_awake_write(cmd, "remember")
@@ -189,6 +197,8 @@ async def list_memory() -> dict[str, Any]:
                 "content": fact.content,
                 "tags": fact.tags,
                 "confidence": fact.confidence,
+                "stability": fact.stability,
+                "salience": fact.salience,
                 "source": fact.source,
                 "created_at": _dt(fact.created_at),
                 "last_used_at": _dt(fact.last_used_at),

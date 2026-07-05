@@ -66,6 +66,8 @@ class ArchivalSearchResult:
     content: str
     tags: list[str]
     confidence: int
+    stability: str
+    salience: int
     distance: float  # cosine distance; lower = closer
     created_at: datetime
 
@@ -76,6 +78,8 @@ class ArchivalFactSnapshot:
     content: str
     tags: list[str]
     confidence: int
+    stability: str
+    salience: int
     source: str | None
     created_at: datetime
     last_used_at: datetime | None
@@ -148,6 +152,8 @@ async def list_archival_facts(
             content=fact.content,
             tags=list(fact.tags or []),
             confidence=fact.confidence,
+            stability=fact.stability,
+            salience=fact.salience,
             source=fact.source,
             created_at=fact.created_at,
             last_used_at=fact.last_used_at,
@@ -182,6 +188,8 @@ async def semantic_search_archival(
             content=row.ArchivalFact.content,
             tags=list(row.ArchivalFact.tags or []),
             confidence=row.ArchivalFact.confidence,
+            stability=row.ArchivalFact.stability,
+            salience=row.ArchivalFact.salience,
             distance=float(row.distance),
             created_at=row.ArchivalFact.created_at,
         )
@@ -203,6 +211,8 @@ async def insert_archival(
     actor: Actor,
     reason: str | None = None,
     op_type: OpType | None = None,
+    stability: str = "long_term",
+    salience: int = 2,
 ) -> int:
     """Insert a new archival fact + log to memory_ops_log.
 
@@ -213,6 +223,8 @@ async def insert_archival(
         content=content,
         tags=tags,
         confidence=confidence,
+        stability=stability,
+        salience=salience,
         source=source,
         embedding=vec,
     )

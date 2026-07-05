@@ -60,6 +60,8 @@ class ArchivalFact(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     confidence: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=2)
+    stability: Mapped[str] = mapped_column(Text, nullable=False, default="long_term")
+    salience: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=2)
     source: Mapped[str | None] = mapped_column(Text)
     embedding: Mapped[list[float] | None] = mapped_column(Vector(1024))
     is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

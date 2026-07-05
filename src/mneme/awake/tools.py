@@ -71,6 +71,8 @@ async def search_archival(query: str, limit: int = 5) -> dict[str, Any]:
                 "content": r.content,
                 "tags": r.tags,
                 "confidence": r.confidence,
+                "stability": r.stability,
+                "salience": r.salience,
                 "distance": r.distance,
             }
             for r in results
@@ -83,6 +85,8 @@ async def insert_archival_fact(
     content: str,
     tags: list[str] | None = None,
     confidence: int = 2,
+    stability: str = "long_term",
+    salience: int = 2,
     source: str | None = None,
     reason: str | None = None,
 ) -> dict[str, Any]:
@@ -96,14 +100,17 @@ async def insert_archival_fact(
         short-term mood unless the user confirms it is a stable pattern.
       - Do NOT call for project-specific facts (those belong in CLAUDE.md).
       - This NEVER writes to core_blocks; those are owned by the Sleep agent.
-      - Confidence policy: 3=stable long-term, 2=stage-specific/recent but
-        useful, 1=weak/inferred/tentative. If one user message mixes stable and
-        temporary information, split the memories instead of storing all as 3.
+      - Signal policy: confidence=factual certainty, stability=time horizon,
+        salience=future usefulness. If one user message mixes stable and
+        temporary information, split the memories instead of storing all as one
+        high-salience long_term fact.
 
     Args:
         content: The fact about the user, in natural language.
         tags: Topical tags (e.g. ["preference", "code-style"]).
-        confidence: 1=low/tentative, 2=stage-specific, 3=stable long-term.
+        confidence: 1=tentative, 2=partly confirmed, 3=explicitly stated.
+        stability: "long_term", "stage", or "temporary".
+        salience: 1=low, 2=medium, 3=high future usefulness.
         source: Where this fact came from (session id or origin tag).
         reason: Brief rationale for storing it.
     """
@@ -114,6 +121,8 @@ async def insert_archival_fact(
             content=content,
             tags=tags,
             confidence=confidence,
+            stability=stability,
+            salience=salience,
             source=source,
             actor=AWAKE_ACTOR,
             reason=reason,

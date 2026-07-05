@@ -116,13 +116,13 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 这 4 个 tool 是 mneme 跟 Claude Code 唯一的接口。`mcp_server.py` 里注册,签名固定。
 
-#### `remember(content, tags=None, confidence=2)`
+#### `remember(content, tags=None, confidence=2, stability="long_term", salience=2)`
 
 **何时被调**:Claude Code 的 LLM 在对话中**自己判断**"用户透露了关于他这个人的事实",主动调用。**不是用户喊"记一下"**——是 LLM 自主决策(LLM-driven memory writes,Letta paper 核心范式)。
 
-例 1:你说"我决定以后所有项目都用 Ruff" → LLM 内部判断这是 cross-project 偏好 → 调 `remember("user prefers Ruff", ["preference", "tooling"], 3)`
+例 1:你说"我决定以后所有项目都用 Ruff" → LLM 内部判断这是 cross-project 偏好 → 调 `remember("user prefers Ruff", ["preference", "tooling"], 3, "long_term", 3)`
 
-例 2:你说"足球、游戏、刷 B 站/抖音基本是我长期的放松方式" → LLM 内部判断这是稳定生活偏好 → 调 `remember("user relaxes through football, games, Bilibili, and Douyin", ["lifestyle", "hobby", "entertainment"], 3)`
+例 2:你说"足球、游戏、刷 B 站/抖音基本是我长期的放松方式" → LLM 内部判断这是稳定生活偏好 → 调 `remember("user relaxes through football, games, Bilibili, and Douyin", ["lifestyle", "hobby", "entertainment"], 3, "long_term", 3)`
 
 **应该记的范围**:关于用户这个人的长期稳定事实,不只限工作学习。包括身份、目标、技能、沟通偏好、工作/学习习惯、长期兴趣爱好、娱乐偏好、生活习惯、放松方式、产品/审美偏好、稳定喜欢/不喜欢。
 
@@ -137,17 +137,19 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 **参数**:
 - `content`:要记的事实(自然语言)
 - `tags`:标签数组(给后续 demote/promote 筛选用)
-- `confidence`:给 Sleep 决定 promote/demote 的稳定性信号,不是 LLM 自报概率。
+- `confidence`:事实确定性,不是 LLM 自报概率,也不是"这条记忆重要不重要"。
+- `stability`:时间跨度,区分长期稳定 / 阶段性 / 临时信息。
+- `salience`:未来有用程度,给 Sleep promote/demote/reflect 做价值排序。
 
-`confidence` 三档语义:
+三类记忆信号拆开后,避免所有"用户明确说过"都被打成 `confidence=3`:
 
-| 值 | 语义 | 例子 |
+| 字段 | 取值 | 语义 | 例子 |
 |---|---|---|
-| 3 | stable long-term fact:用户明确表达的长期稳定事实 | "用户喜欢足球";"用户偏好直接具体的中文解释" |
-| 2 | stage-specific / recent but useful:阶段性、最近状态、上下文相关,可能变化 | "用户最近主要玩 CS2";"用户当前 PS5/NS 不在身边" |
-| 1 | tentative / inferred:弱确认、推断、试探性事实 | "用户可能对某类游戏感兴趣" |
+| `confidence` | 1/2/3 | 事实确定性:推断 / 部分确认 / 用户明确说过 | "用户明确说自己喜欢足球" → 3 |
+| `stability` | `long_term` / `stage` / `temporary` | 时间跨度:长期画像 / 当前阶段 / 短期状态 | "秋招优先冲大厂" → stage |
+| `salience` | 1/2/3 | 未来协作价值:低 / 中 / 高 | "偏好直接具体解释" → 3 |
 
-如果一句话里混合长期事实和临时细节,应该拆开保存成多条不同 confidence 的记忆,或者跳过临时细节。不能把整句话统一打成 `confidence=3`。
+如果一句话里混合长期事实和临时细节,应该拆开保存成多条不同 `stability/salience` 的记忆,或者跳过临时细节。不能把整句话统一打成一条 `confidence=3, stability=long_term, salience=3` 的高价值长期记忆。
 
 #### `recall(query, limit=5)`
 
@@ -230,7 +232,7 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
 
 如果 MCP `remember` 直接调 `store.insert_archival`——中间没 LLM——那就是"LLM 包装的 CRUD",失去 agent 性。让 LLM 在 Awake 内部跑 ReAct,**才能根据 observation 自适应**:
 
-- 高 confidence + 短文本 → LLM 可能跳过 search 直接 insert
+- 事实明确 + 短文本 → LLM 可能跳过 search 直接 insert
 - 低 confidence + 长文本 → 先 search 看有没有近似
 - 检测到 dup → LLM 决定 skip / merge / 还是 insert
 
@@ -279,7 +281,8 @@ Layer 4: UPDATE archival_facts SET is_deleted=true WHERE id=37
                   ▼
 Claude Code → mneme MCP server:
               remember(content="user prefers 4-space indent",
-                       tags=["preference"], confidence=3)
+                       tags=["preference"], confidence=3,
+                       stability="long_term", salience=3)
                                 │
                                 │ (mcp_server.py 收到 → schedule background task)
                                 ▼
@@ -480,10 +483,10 @@ COMMIT;
 
 ### Node 4: promote ← 唯一改 core_blocks 的路径!
 
-**为啥**:archival 里"被反复用 + confidence 高"的 fact,该提升到结构化的 core block,成为用户画像的固定一部分。**Sleep 是 core_blocks 的 sole writer**(Letta read-only primary)。
+**为啥**:archival 里"被反复用 + 用户明确说过 + 长期稳定 + 未来有用"的 fact,才该提升到结构化的 core block,成为用户画像的固定一部分。**Sleep 是 core_blocks 的 sole writer**(Letta read-only primary)。
 
 **做啥**:
-1. SQL 找 `use_count >= 5 AND confidence = 3` 的 archival
+1. SQL 找 `use_count >= 5 AND confidence >= 3 AND stability = 'long_term' AND salience >= 2` 的 archival
 2. 把候选 + 当前 core_blocks 喂 LLM(LLM 要看 core 当前内容才能写新值)
 3. LLM 决定哪些 PROMOTE / SKIP,PROMOTE 到哪个 core block,新 block 整段 value 是什么
 4. 应用到 `core_blocks_staging`
@@ -491,9 +494,9 @@ COMMIT;
 **例子**:
 - 候选 archival:
   ```
-  [id=88,  use_count=7,  conf=3, "user prefers 4-space indentation"]
-  [id=199, use_count=12, conf=3, "user writes tests first"]
-  [id=158, use_count=5,  conf=3, "user dislikes nested lambdas"]
+  [id=88,  use_count=7,  conf=3, stability=long_term, salience=3, "user prefers 4-space indentation"]
+  [id=199, use_count=12, conf=3, stability=long_term, salience=3, "user writes tests first"]
+  [id=158, use_count=5,  conf=3, stability=stage,     salience=2, "user recently mainly plays CS2"]
   ```
 - LLM 决定:
   ```json
@@ -506,7 +509,7 @@ COMMIT;
      "new_block_value": "User writes tests before implementation (TDD-leaning)...",
      "reason": "consistent workflow across projects"},
     {"fact_id": 158, "decision": "SKIP",
-     "reason": "Python-specific syntax preference, not generalizable"}
+     "reason": "stage-specific leisure fact, not core user profile material"}
   ]
   ```
 - 应用到 staging:
@@ -525,12 +528,12 @@ COMMIT;
 
 ### Node 5: demote(在 plan 里 → 执行;不在 plan 里 → 跳过)
 
-**为啥**:archival 是零散事实仓库,只增不清会越来越吵。Sleep 需要把"长期没被用到 + 低 confidence"的事实软删,降低 recall 噪音和后续 Sleep 的处理成本。
+**为啥**:archival 是零散事实仓库,只增不清会越来越吵。Sleep 需要把"长期没被用到 + 低信号"的事实软删,降低 recall 噪音和后续 Sleep 的处理成本。
 
 **注意**:`demote` 不是删 core block。core block 是高层用户画像,只有 `promote` / `resolve` 会改 core;`demote` 当前只处理 `archival_facts_staging` 里的低价值 fact。
 
 **做啥**:
-1. SQL 找 stale candidates:长期没被 recall 用过、confidence 低、还没被软删的 archival
+1. SQL 找 stale candidates:长期没被 recall 用过,且 `confidence <= 1 OR stability='temporary' OR salience <= 1`,还没被软删的 archival
 2. 把候选喂 LLM `DEMOTE_PROMPT`
 3. LLM 对每条判断 `FORGET` / `KEEP`
 4. 只对 `FORGET` 的 fact 在 staging 表里 `is_deleted = TRUE`
@@ -539,16 +542,16 @@ COMMIT;
 **例子**:
 - 候选 archival:
   ```
-  [id=31, confidence=1, last_used_at=120 days ago, "user might try Flask someday"]
-  [id=44, confidence=2, last_used_at=110 days ago, "user once asked about Kotlin syntax"]
-  [id=88, confidence=3, last_used_at=140 days ago, "user prefers 4-space indentation"]
+  [id=31, confidence=1, stability=stage,     salience=1, last_used_at=120 days ago, "user might try Flask someday"]
+  [id=44, confidence=2, stability=temporary, salience=1, last_used_at=110 days ago, "user's PS5 is currently away"]
+  [id=88, confidence=3, stability=long_term, salience=3, last_used_at=140 days ago, "user prefers 4-space indentation"]
   ```
 - LLM 决定:
   ```json
   {
     "actions": [
       {"fact_id": 31, "decision": "FORGET", "reason": "low-confidence tentative interest, never reused"},
-      {"fact_id": 44, "decision": "KEEP", "reason": "could reflect Java ecosystem interest"},
+      {"fact_id": 44, "decision": "FORGET", "reason": "temporary low-salience state, stale"},
       {"fact_id": 88, "decision": "KEEP", "reason": "confidence=3 facts must not be forgotten by demote"}
     ]
   }
@@ -563,6 +566,7 @@ COMMIT;
 
 **保守规则**:
 - `confidence=3` 永远不由 demote 删除
+- `stability=long_term AND salience>=2` 的事实默认保守保留
 - 有可能解释 core block 的 fact 不删
 - 不确定就 `KEEP`
 - 删除是软删,不是物理删除;`inspect_memory.py --include-deleted` 还能看见
@@ -759,7 +763,7 @@ COMMIT;
 | **生物学类比** | 长期记忆 / 内化的人格 | 短期记忆 / 工作记忆 |
 | **角色** | LLM 整合后的 user 画像(综合) | 原始 fact 仓库(零散) |
 
-**关系**:Awake 写 archival(便宜快),Sleep 定期把**高频 + 高 confidence** 的 archival **promote 进对应的 core_block**(LLM 加工成段落)。
+**关系**:Awake 写 archival(便宜快),Sleep 定期把**高频 + 事实明确 + long_term + 高 salience** 的 archival **promote 进对应的 core_block**(LLM 加工成段落)。
 
 → **archival = 原始数据;core_block = 提炼后的洞察**。
 
@@ -782,6 +786,8 @@ COMMIT;
 每条一个 fact(几句话),有:
 
 - `confidence`(1/2/3)
+- `stability`(`long_term` / `stage` / `temporary`)
+- `salience`(1/2/3)
 - `tags` — 标签数组
 - `embedding`(1024 维向量)
 - `use_count`(被 recall 多少次)

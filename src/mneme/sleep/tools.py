@@ -79,12 +79,19 @@ async def summarize_state(
     stale_cutoff = datetime.now(UTC) - timedelta(days=stale_threshold_days)
     stale_count = int((await session.execute(text(
         "SELECT count(*) FROM archival_facts "
-        "WHERE is_deleted = FALSE AND confidence <= 1 "
+        "WHERE is_deleted = FALSE "
+        "AND (confidence <= 1 OR stability = 'temporary' OR salience <= 1) "
         "AND (last_used_at IS NULL OR last_used_at < :cutoff)"
     ), {"cutoff": stale_cutoff})).scalar_one())
 
     high_freq = bool((await session.execute(text(
-        "SELECT 1 FROM archival_facts WHERE use_count > 5 AND confidence = 3 LIMIT 1"
+        "SELECT 1 FROM archival_facts "
+        "WHERE is_deleted = FALSE "
+        "AND use_count >= 5 "
+        "AND confidence >= 3 "
+        "AND stability = 'long_term' "
+        "AND salience >= 2 "
+        "LIMIT 1"
     ))).first())
 
     return StateSummary(
@@ -107,7 +114,7 @@ async def find_consolidation_clusters(
     Day 05+: replace with HNSW + clustering algorithm.
     """
     rows = (await session.execute(text(
-        "SELECT id, content, embedding, tags, confidence "
+        "SELECT id, content, embedding, tags, confidence, stability, salience "
         "FROM archival_facts_staging "
         "WHERE is_deleted = FALSE AND embedding IS NOT NULL"
     ))).all()
@@ -127,7 +134,7 @@ async def find_consolidation_clusters(
 
         # Compute distances to remaining unvisited rows.
         cands = (await session.execute(text(
-            "SELECT id, content, tags, confidence, "
+            "SELECT id, content, tags, confidence, stability, salience, "
             "embedding <=> CAST(:emb AS vector) AS dist "
             "FROM archival_facts_staging "
             "WHERE is_deleted = FALSE AND id != :self_id "
@@ -146,6 +153,8 @@ async def find_consolidation_clusters(
                     "content": c.content,
                     "tags": list(c.tags or []),
                     "confidence": c.confidence,
+                    "stability": c.stability,
+                    "salience": c.salience,
                     "distance": float(c.dist),
                 })
                 visited.add(c.id)
@@ -162,16 +171,23 @@ async def get_promote_candidates(
     session: AsyncSession,
     min_use_count: int = 5,
     min_confidence: int = 3,
+    min_salience: int = 2,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
     """Archival facts that meet the promotion threshold."""
     rows = (await session.execute(text(
-        "SELECT id, content, tags, confidence, use_count, last_used_at "
+        "SELECT id, content, tags, confidence, stability, salience, use_count, last_used_at "
         "FROM archival_facts_staging "
         "WHERE is_deleted = FALSE "
         "AND use_count >= :uc AND confidence >= :conf "
+        "AND stability = 'long_term' AND salience >= :salience "
         "ORDER BY use_count DESC LIMIT :lim"
-    ), {"uc": min_use_count, "conf": min_confidence, "lim": limit})).all()
+    ), {
+        "uc": min_use_count,
+        "conf": min_confidence,
+        "salience": min_salience,
+        "lim": limit,
+    })).all()
 
     return [
         {
@@ -179,6 +195,8 @@ async def get_promote_candidates(
             "content": r.content,
             "tags": list(r.tags or []),
             "confidence": r.confidence,
+            "stability": r.stability,
+            "salience": r.salience,
             "use_count": r.use_count,
         }
         for r in rows
@@ -192,9 +210,10 @@ async def get_stale_candidates(
 ) -> list[dict[str, Any]]:
     cutoff = datetime.now(UTC) - timedelta(days=days)
     rows = (await session.execute(text(
-        "SELECT id, content, confidence, last_used_at, created_at "
+        "SELECT id, content, confidence, stability, salience, last_used_at, created_at "
         "FROM archival_facts_staging "
-        "WHERE is_deleted = FALSE AND confidence = 1 "
+        "WHERE is_deleted = FALSE "
+        "AND (confidence <= 1 OR stability = 'temporary' OR salience <= 1) "
         "AND (last_used_at IS NULL OR last_used_at < :cutoff) "
         "ORDER BY created_at ASC LIMIT :lim"
     ), {"cutoff": cutoff, "lim": limit})).all()
@@ -204,6 +223,8 @@ async def get_stale_candidates(
             "id": r.id,
             "content": r.content,
             "confidence": r.confidence,
+            "stability": r.stability,
+            "salience": r.salience,
             "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
         }
         for r in rows
@@ -387,5 +408,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "content": r.content,
         "tags": list(r.tags or []),
         "confidence": r.confidence,
+        "stability": r.stability,
+        "salience": r.salience,
         "distance": 0.0,
     }

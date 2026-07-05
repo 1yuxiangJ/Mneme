@@ -14,6 +14,8 @@ def test_remember_tool_description_includes_lifestyle_memory_policy():
     assert "stable long-term" in doc
     assert "stage-specific" in doc
     assert "split" in doc
+    assert "stability" in doc
+    assert "salience" in doc
 
 
 def test_awake_domain_constraint_includes_lifestyle_memory_policy():
@@ -26,3 +28,5 @@ def test_awake_domain_constraint_includes_lifestyle_memory_policy():
     assert "stable long-term" in prompt
     assert "stage-specific" in prompt
     assert "split" in prompt
+    assert "stability" in prompt
+    assert "salience" in prompt

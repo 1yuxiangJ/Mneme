@@ -30,8 +30,8 @@ Memory state:
 
 Phases available:
 1. consolidate — merge near-duplicate archival facts (cosine > 0.85)
-2. promote    — lift high-confidence, frequently-used archival into core blocks
-3. demote     — soft-delete archival that's stale (last_used > 90d) and low-conf
+2. promote    — lift frequent, explicit, durable, useful archival into core blocks
+3. demote     — soft-delete archival that's stale and low-signal
 4. resolve    — detect & fix contradictions within core blocks
 5. reflect    — write a one-paragraph "about the user" snapshot to ops log
 
@@ -81,7 +81,8 @@ Output strictly this JSON:
 }}
 
 Be conservative: if any cluster member has confidence=3 and others don't,
-PREFER keeping the high-confidence wording.
+PREFER keeping the high-confidence wording. Preserve stability/salience semantics
+in the merged wording; do not turn temporary details into long-term traits.
 """
 
 
@@ -98,7 +99,8 @@ each candidate archival fact into an appropriate core block.
 Current core blocks (do not duplicate existing content):
 {core_blocks_json}
 
-Candidate archival facts (high use_count + confidence):
+Candidate archival facts (high use_count + confidence=3 + stability=long_term
++ salience>=2):
 {candidates_json}
 
 The 5 core blocks: background, preferences, habits, skills, lessons_learned.
@@ -126,7 +128,10 @@ For each candidate, output:
 Rules:
 - new_block_value MUST be the COMPLETE new value, not a diff.
 - Keep block under char_limit (default 2000).
-- Prefer PROMOTE only if the fact is general and durable (not a one-off).
+- PROMOTE only if the fact is general, durable, and useful across future
+  conversations.
+- Treat stability and salience as hard safety signals: never promote temporary
+  facts or low-salience trivia even if phrased confidently.
 - If unsure, SKIP.
 """
 
@@ -138,8 +143,9 @@ Rules:
 
 DEMOTE_PROMPT = """You are mneme's Sleep agent in the DEMOTE phase.
 
-Below are stale archival facts (last_used_at > 90 days ago) with low confidence.
-Decide whether each can be safely forgotten.
+Below are stale archival facts (last_used_at > 90 days ago) with low signal:
+low confidence, temporary stability, or low salience. Decide whether each can
+be safely forgotten.
 
 Stale candidates:
 {stale_json}
@@ -154,6 +160,7 @@ Output:
 
 Rules:
 - NEVER forget facts with confidence=3.
+- Be extra conservative with stability=long_term and salience>=2.
 - NEVER forget facts that contradict / clarify core blocks (those need resolve).
 - When in doubt, KEEP.
 """

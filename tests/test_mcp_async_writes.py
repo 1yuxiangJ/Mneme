@@ -34,6 +34,34 @@ async def test_remember_returns_accepted_without_awaiting_awake(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_remember_command_includes_memory_signals(monkeypatch):
+    started = asyncio.Event()
+    captured_command = ""
+
+    async def awake(command: str) -> dict[str, str]:
+        nonlocal captured_command
+        captured_command = command
+        started.set()
+        return {"status": "ok"}
+
+    monkeypatch.setattr(mcp_server, "_run_awake", awake)
+
+    result = await mcp_server.remember(
+        "User currently mainly plays CS2.",
+        ["hobby", "gaming"],
+        confidence=3,
+        stability="stage",
+        salience=2,
+    )
+
+    assert result["status"] == "accepted"
+    await asyncio.wait_for(started.wait(), timeout=1)
+    assert "confidence: 3" in captured_command
+    assert "stability: stage" in captured_command
+    assert "salience: 2" in captured_command
+
+
+@pytest.mark.asyncio
 async def test_recall_still_awaits_awake(monkeypatch):
     awaited = False
 
@@ -88,6 +116,8 @@ async def test_list_memory_reads_database_without_awake(monkeypatch):
                 content="User prefers direct Chinese explanations.",
                 tags=["communication", "preference"],
                 confidence=3,
+                stability="long_term",
+                salience=3,
                 source="test",
                 created_at=datetime(2026, 7, 5, tzinfo=UTC),
                 last_used_at=None,
@@ -108,3 +138,5 @@ async def test_list_memory_reads_database_without_awake(monkeypatch):
     assert result["core_blocks"][0]["label"] == "background"
     assert result["core_blocks"][0]["value"] == "Java backend developer."
     assert result["archival_facts"][0]["id"] == 7
+    assert result["archival_facts"][0]["stability"] == "long_term"
+    assert result["archival_facts"][0]["salience"] == 3

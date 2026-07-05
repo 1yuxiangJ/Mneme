@@ -950,8 +950,8 @@ Claude Code (LLM A, 比如 Claude Sonnet)
 | 1 | **snapshot** | 主表整表复制到 staging,记 `snapshot_ts` | `sleep/staging.py:38-58` |
 | 2 | **plan** | LLM 看状态决定本轮跑哪几个 phase(省 token + 跳无意义阶段) | `sleep/agent.py:106-127` |
 | 3 | **consolidate** | pgvector 找 cosine < 0.15 的 cluster,LLM merge | `sleep/tools.py:92-151, 211-246` |
-| 4 | **promote** | 找 `use_count≥5 AND confidence=3` archival,LLM 升到 core block(**core 唯一入口**) | `sleep/tools.py:154-178, 249-283` |
-| 5 | **demote** | `confidence=1 AND last_used>90d` 软删 | `sleep/tools.py:181-203, 286-315` |
+| 4 | **promote** | 找 `use_count≥5 AND confidence>=3 AND stability=long_term AND salience>=2` archival,LLM 升到 core block(**core 唯一入口**) | `sleep/tools.py:154-178, 249-283` |
+| 5 | **demote** | stale 且低信号(`confidence<=1 OR temporary OR salience<=1`)的 archival 软删 | `sleep/tools.py:181-203, 286-315` |
 | 6 | **resolve** | LLM 扫 core 找内部矛盾(真逻辑冲突,不 fix 风格差异) | `sleep/agent.py:189-216` |
 | 7 | **reflect** | LLM 写 2-4 句"about user"段落到 ops_log(给人审阅;唯一 T=0.3) | `sleep/agent.py:219-245` |
 | 8 | **swap** | 单 transaction:合并 cycle 期间主表新 archival + 三对 RENAME + TRUNCATE 旧 | `sleep/staging.py:61-92` |
@@ -1221,6 +1221,8 @@ CREATE TABLE archival_facts (
     content       TEXT NOT NULL,
     tags          TEXT[],
     confidence    SMALLINT NOT NULL DEFAULT 2,
+    stability     TEXT NOT NULL DEFAULT 'long_term',
+    salience      SMALLINT NOT NULL DEFAULT 2,
     source        TEXT,
     embedding     vector(1024),                  -- ← nullable
     is_deleted    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -1262,30 +1264,54 @@ PG 原生支持 array 列,**省得开第二张表**(MySQL 就得 `archival_tags(
 2. **Awake `get_overview` 时按 tag 分组统计**("preference 类有 12 条")
 3. **未来过滤检索**("只搜 lesson 类 fact")
 
-#### `confidence SMALLINT DEFAULT 2` —— 1/2/3 三档
+#### `confidence SMALLINT DEFAULT 2` —— 事实确定性,不是重要性
 
-注意:这里的 confidence 不是"用户说得有多确定",也不是 LLM 自报概率,而是**这条记忆作为长期用户画像信号的稳定性 / 可复用性**。
+注意:这里的 confidence 不是"这条记忆重要不重要",也不是 LLM 自报概率,而是**事实确定性**。用户明确说过就是 3;部分确认是 2;模型推断或语气不确定是 1。
 
 | 值 | 含义 | 例子 |
 |---|---|---|
 | 1 | tentative / inferred | "用户**可能**喜欢深色主题"(弱推断,未确认) |
-| 2 | stage-specific / recent but useful | "用户最近主要玩 CS2";"用户当前 PS5/NS 不在身边" |
-| 3 | stable long-term | "用户喜欢足球";"用户明确长期偏好 4 空格" |
+| 2 | partly confirmed | 用户表达过,但上下文不完整或还需确认 |
+| 3 | explicitly stated | "用户喜欢足球";"用户明确偏好 4 空格" |
+
+原来把"确定性 / 稳定性 / 重要性"都塞进 confidence,结果绝大多数用户明确说过的话都会变成 3,失去区分度。现在拆成三列:
+
+| 字段 | 回答的问题 | 例子 |
+|---|---|---|
+| `confidence` | 这件事有多确定? | 用户明确说"我喜欢足球" → 3 |
+| `stability` | 这件事能维持多久? | "秋招优先冲大厂" → stage |
+| `salience` | 未来协作有多有用? | "偏好直接具体解释" → 3 |
+
+#### `stability TEXT DEFAULT 'long_term'` —— 时间跨度
+
+| 值 | 含义 | 例子 |
+|---|---|---|
+| `long_term` | 长期稳定画像 | 沟通偏好、长期兴趣、稳定工作习惯 |
+| `stage` | 当前阶段事实,会随职业/项目/生活阶段变化 | 秋招目标、当前主力工具、最近主要玩的游戏 |
+| `temporary` | 短期状态或一次性事件 | 今天很累、这周设备不在身边、临时计划 |
+
+#### `salience SMALLINT DEFAULT 2` —— 未来协作价值
+
+| 值 | 含义 | 例子 |
+|---|---|---|
+| 1 | 低价值背景,偶尔有用 | 本机项目路径、一次工具偏好试用 |
+| 2 | 中等价值,相关场景有用 | 当前秋招方向、常用开发工具 |
+| 3 | 高价值,经常影响回答方式或决策 | 沟通偏好、长期职业目标、稳定工作习惯 |
 
 如果一句话里混了长期事实和短期状态,要拆开保存:
 
 ```text
-用户喜欢足球。                    → confidence=3
-用户最近暂停健身。                → confidence=2 或先追问
-用户当前 PS5/NS 不在身边。        → confidence=2 或不记
+用户喜欢足球。                    → confidence=3, stability=long_term, salience=2
+用户最近暂停健身。                → confidence=3, stability=stage, salience=1
+用户当前 PS5/NS 不在身边。        → confidence=3, stability=temporary, salience=1 或不记
 ```
 
-不能把整句话打包成一条 `confidence=3`,否则 Sleep promote 会把阶段性事实误升进 core。
+不能把整句话打包成一条 `confidence=3, stability=long_term, salience=3`,否则 Sleep promote 会把阶段性事实误升进 core。
 
 为啥不浮点 [0, 1]:
 - LLM 输出整数比小数稳得多(prompt 里写 `"confidence": 1` vs `"confidence": 0.73`)
-- 离散三档**够用**——超过 3 档 LLM 自己也分不清 0.7 跟 0.8 啥区别
-- Sleep 阈值好写:promote 要 `confidence=3`,demote 容许 `confidence=1`,**整数 == 直接比**
+- 对 LLM 来说三档比 0.73 这种伪精确更稳定
+- Sleep 阈值好写:`confidence=3` 表示事实明确,`stability/salience` 再决定能不能 promote
 
 #### `source TEXT` —— 来源标签
 
@@ -1339,10 +1365,14 @@ await session.commit()
               │  Sleep 怎么用这三个字段决定 promote / demote   │
               └────────────────────────────────────────┘
 
-PROMOTE 候选:  use_count >= 5  AND  confidence = 3
+PROMOTE 候选:  use_count >= 5
+              AND confidence >= 3
+              AND stability = 'long_term'
+              AND salience >= 2
               ↑ Awake search_archival 命中次数(说明常被用到)
 
-DEMOTE 候选:   last_used_at < now() - 90 days  AND  confidence = 1
+DEMOTE 候选:   last_used_at < now() - 90 days
+              AND (confidence <= 1 OR stability='temporary' OR salience <= 1)
               ↑ 长期没被命中(说明 LLM 都不觉得相关)
 
 REFLECT 时:    created_at DESC LIMIT 10 = "最近 fact 摘要"
@@ -1403,13 +1433,13 @@ CREATE INDEX idx_archival_active
 ### §4.2 · 小结
 
 `archival_facts` 是项目里**信息密度最高的表**:
-- `confidence` + `use_count` + `last_used_at` = **Sleep 的决策信号源**
+- `confidence` + `stability` + `salience` + `use_count` + `last_used_at` = **Sleep 的决策信号源**
 - `embedding nullable` = **defer-write 容错**
 - `is_deleted` + partial index = **软删但不付性能税**
 - 3 个索引各管一类 query(vector / 数组 / 时序)
 
 **一句话面试稿**:
-> "archival_facts 的每个字段都有明确职责——content / tags 给 Awake 检索,confidence / use_count / last_used_at 给 Sleep 信号,embedding 可空容许 defer-write,is_deleted 加 partial index 实现零成本软删。"
+> "archival_facts 的每个字段都有明确职责——content / tags 给 Awake 检索,confidence 表示事实确定性,stability / salience 表示时间跨度和未来价值,use_count / last_used_at 给 Sleep 访问频率信号,embedding 可空容许 defer-write,is_deleted 加 partial index 实现零成本软删。"
 
 ---
 
@@ -2505,6 +2535,7 @@ sleep/agent.py: run_sleep_cycle()
     │ candidates = await tools.get_promote_candidates(session)
     │   SELECT * FROM archival_facts_staging
     │   WHERE use_count >= 5 AND confidence >= 3
+    │     AND stability = 'long_term' AND salience >= 2
     │   ORDER BY use_count DESC LIMIT 20
     │ if candidates:
     │   summary = await tools.summarize_state(session, None)  # 拿当前 core 内容
@@ -2525,7 +2556,8 @@ sleep/agent.py: run_sleep_cycle()
 [⑤ node_demote]
     │ stale = get_stale_candidates(session)
     │   SELECT * FROM archival_facts_staging
-    │   WHERE confidence = 1 AND (last_used_at IS NULL OR last_used_at < now() - 90 days)
+    │   WHERE (confidence <= 1 OR stability = 'temporary' OR salience <= 1)
+    │     AND (last_used_at IS NULL OR last_used_at < now() - 90 days)
     │   ORDER BY created_at ASC LIMIT 50
     │ if stale:
     │   rendered = DEMOTE_PROMPT.format(stale_json=...)
@@ -3745,7 +3777,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 >
 > **1. 边界不同**——ChatGPT Memory 是给 chatbot 的通用记忆,我项目专门给 Claude Code 装跨 project 用户画像。**ChatGPT Memory 不能给 Claude Code 用**(协议不通)。
 >
-> **2. 决策粒度不同**——ChatGPT 闭源,我们不知道它怎么决定记 vs 不记。我项目**决策规则可读可改**:`confidence>=3 AND use_count>=5` 才 promote,LLM 决策都有 reason 留 ops_log。
+> **2. 决策粒度不同**——ChatGPT 闭源,我们不知道它怎么决定记 vs 不记。我项目**决策规则可读可改**:`confidence>=3 AND stability=long_term AND salience>=2 AND use_count>=5` 才进入 promote 候选,LLM 决策都有 reason 留 ops_log。
 >
 > **3. 责任边界不同**——OpenAI 要给 10 亿 user 找 universal taste,我项目只给程序员(同质用户)。**场景具体 → 判断规则可以收敛**,这是大厂没法做的优势。
 >
@@ -3777,7 +3809,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 > - **MCP server 接入** —— Letta paper 没讲怎么对接外部 client,我用 MCP 把 Claude Code 接上
 > - **staging snapshot + atomic swap 并发模型** —— Letta paper 没明说并发怎么解,我用 staging 表 + 三对 RENAME 实现 lock-free reading
 > - **ops_log 审计层** —— Letta paper 提到要可观测但没明说,我设计了 9 种 op_type + 全文 before/after + reason
-> - **信号驱动 promote / demote 阈值** —— `use_count >= 5 AND confidence = 3`,paper 给了思路我定的具体数
+> - **信号驱动 promote / demote 阈值** —— promote 看 `use_count / confidence / stability / salience`,demote 看 stale + 低信号,paper 给了思路我定的具体数
 >
 > **没 follow 的**:
 > - Letta 的 `request_heartbeat` 自主链式调用——MVP 不需要 Awake 自主多 step,跳过

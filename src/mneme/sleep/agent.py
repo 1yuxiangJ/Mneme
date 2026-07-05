@@ -278,14 +278,15 @@ async def node_reflect(state: SleepState) -> SleepState:
     async with session_maker() as session:
         summary = await tools.summarize_state(session, None)
         rows = (await session.execute(sql_text(
-            "SELECT id, content, confidence, use_count "
+            "SELECT id, content, confidence, stability, salience, use_count "
             "FROM archival_facts_staging "
             "WHERE is_deleted = FALSE "
-            "ORDER BY confidence DESC, use_count DESC LIMIT 5"
+            "ORDER BY salience DESC, confidence DESC, use_count DESC LIMIT 5"
         ))).all()
         highlights = [
             {"id": r.id, "content": r.content,
-             "confidence": r.confidence, "use_count": r.use_count}
+             "confidence": r.confidence, "stability": r.stability,
+             "salience": r.salience, "use_count": r.use_count}
             for r in rows
         ]
         rendered = prompts.REFLECT_PROMPT.format(

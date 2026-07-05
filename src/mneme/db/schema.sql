@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS archival_facts (
     content       TEXT NOT NULL,
     tags          TEXT[],
     confidence    SMALLINT NOT NULL DEFAULT 2,  -- 1=low 2=med 3=high
+    stability     TEXT NOT NULL DEFAULT 'long_term',
+    salience      SMALLINT NOT NULL DEFAULT 2,
     source        TEXT,                          -- session id / origin tag
     embedding     vector(1024),                  -- 阿里通义 text-embedding-v3
     is_deleted    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -53,6 +55,13 @@ CREATE TABLE IF NOT EXISTS archival_facts (
     last_used_at  TIMESTAMPTZ,
     use_count     INT NOT NULL DEFAULT 0
 );
+
+-- Idempotent migrations for local DBs created before stability/salience.
+ALTER TABLE archival_facts
+    ADD COLUMN IF NOT EXISTS stability TEXT NOT NULL DEFAULT 'long_term';
+
+ALTER TABLE archival_facts
+    ADD COLUMN IF NOT EXISTS salience SMALLINT NOT NULL DEFAULT 2;
 
 CREATE INDEX IF NOT EXISTS idx_archival_embedding
     ON archival_facts

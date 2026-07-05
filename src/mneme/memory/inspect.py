@@ -80,6 +80,8 @@ async def collect_snapshot(
                     "content": row.content,
                     "tags": row.tags or [],
                     "confidence": row.confidence,
+                    "stability": row.stability,
+                    "salience": row.salience,
                     "source": row.source,
                     "is_deleted": row.is_deleted,
                     "use_count": row.use_count,

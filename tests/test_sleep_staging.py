@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy import text
 
 from mneme.sleep.staging import atomic_swap, cleanup_staging, snapshot_to_staging
-from mneme.sleep.tools import find_consolidation_clusters
+from mneme.sleep.tools import find_consolidation_clusters, get_promote_candidates
 
 pytestmark = pytest.mark.integration
 
@@ -29,6 +29,36 @@ async def _insert_archival(session, content: str, axis: int = 0) -> int:
         RETURNING id
         """
     ), {"content": content, "embedding": _vector_literal(axis)})).scalar_one())
+
+
+async def _insert_signal_archival(
+    session,
+    content: str,
+    confidence: int,
+    stability: str,
+    salience: int,
+    use_count: int,
+) -> int:
+    return int((await session.execute(text(
+        """
+        INSERT INTO archival_facts (
+            content, tags, confidence, stability, salience, source, embedding,
+            use_count
+        )
+        VALUES (
+            :content, ARRAY['test'], :confidence, :stability, :salience, 'test',
+            CAST(:embedding AS vector), :use_count
+        )
+        RETURNING id
+        """
+    ), {
+        "content": content,
+        "confidence": confidence,
+        "stability": stability,
+        "salience": salience,
+        "use_count": use_count,
+        "embedding": _vector_literal(),
+    })).scalar_one())
 
 
 async def _count_table(session, table: str) -> int:
@@ -79,6 +109,45 @@ async def test_find_consolidation_clusters_uses_pgvector_distance(integration_se
 
     assert len(clusters) == 1
     assert {item["id"] for item in clusters[0]} == {first_id, second_id}
+
+
+@pytest.mark.asyncio
+async def test_promote_candidates_require_long_term_salient_explicit_memory(
+    integration_session,
+):
+    """Promotion candidates must be explicit, durable, salient, and frequently used."""
+    stable_id = await _insert_signal_archival(
+        integration_session,
+        "User prefers direct engineering explanations.",
+        confidence=3,
+        stability="long_term",
+        salience=3,
+        use_count=6,
+    )
+    await _insert_signal_archival(
+        integration_session,
+        "User currently mainly plays CS2.",
+        confidence=3,
+        stability="stage",
+        salience=2,
+        use_count=9,
+    )
+    await _insert_signal_archival(
+        integration_session,
+        "User's local Mneme path is /Users/mac/dream.",
+        confidence=3,
+        stability="long_term",
+        salience=1,
+        use_count=9,
+    )
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    candidates = await get_promote_candidates(integration_session)
+
+    assert [item["id"] for item in candidates] == [stable_id]
+    assert candidates[0]["stability"] == "long_term"
+    assert candidates[0]["salience"] == 3
 
 
 @pytest.mark.asyncio
