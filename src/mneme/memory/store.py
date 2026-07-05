@@ -71,6 +71,18 @@ class ArchivalSearchResult:
 
 
 @dataclass
+class ArchivalFactSnapshot:
+    id: int
+    content: str
+    tags: list[str]
+    confidence: int
+    source: str | None
+    created_at: datetime
+    last_used_at: datetime | None
+    use_count: int
+
+
+@dataclass
 class CoreBlockSnapshot:
     label: str
     value: str
@@ -117,6 +129,32 @@ async def get_memory_overview(session: AsyncSession) -> MemoryOverview:
         core_blocks=await list_core_blocks(session),
         archival_count=await count_archival(session),
     )
+
+
+async def list_archival_facts(
+    session: AsyncSession,
+    limit: int = 20,
+) -> list[ArchivalFactSnapshot]:
+    stmt = (
+        select(ArchivalFact)
+        .where(ArchivalFact.is_deleted.is_(False))
+        .order_by(ArchivalFact.id)
+        .limit(limit)
+    )
+    res = await session.execute(stmt)
+    return [
+        ArchivalFactSnapshot(
+            id=fact.id,
+            content=fact.content,
+            tags=list(fact.tags or []),
+            confidence=fact.confidence,
+            source=fact.source,
+            created_at=fact.created_at,
+            last_used_at=fact.last_used_at,
+            use_count=fact.use_count,
+        )
+        for fact in res.scalars()
+    ]
 
 
 async def semantic_search_archival(

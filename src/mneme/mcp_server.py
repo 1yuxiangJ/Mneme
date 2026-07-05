@@ -1,23 +1,30 @@
 """MCP server: 4 tools exposed to Claude Code via streamable-http transport.
 
-Each tool here is a thin wrapper that:
+Most tools here are thin wrappers that:
   1. Builds a natural-language command describing the request.
   2. Delegates to the Awake agent's ReAct loop (awake.agent.run_awake).
   3. Returns the agent's structured summary.
 
 The Awake agent then calls internal tools (search/insert/forget/etc.) per
 its system prompt policy.
+
+`list_memory` is intentionally a direct DB read path: it is deterministic,
+cheap, and should remain available even if the LLM provider is temporarily
+unreachable.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from mneme.awake.agent import run_awake as _run_awake
 from mneme.config import settings
+from mneme.db.models import get_sessionmaker
+from mneme.memory.store import get_memory_overview, list_archival_facts
 from mneme.sleep.scheduler import mark_awake_activity
 
 logger = logging.getLogger("mneme.mcp")
@@ -70,6 +77,10 @@ mcp = FastMCP(
     host=settings.mcp_server_host,
     port=settings.mcp_server_port,
 )
+
+
+def _dt(value: datetime | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 @mcp.tool()
@@ -125,10 +136,42 @@ async def list_memory() -> dict[str, Any]:
 
     Recommended at the start of a new conversation.
     """
-    return await run_awake(
-        "list_memory: give an overview of the stored user model "
-        "(core blocks + archival total)."
-    )
+    mark_awake_activity()
+    session_maker = get_sessionmaker()
+    async with session_maker() as session:
+        overview = await get_memory_overview(session)
+        archival_facts = await list_archival_facts(session, limit=20)
+
+    return {
+        "status": "ok",
+        "mode": "direct_db",
+        "core_blocks": [
+            {
+                "label": block.label,
+                "value": block.value,
+                "value_preview": block.value[:240],
+                "char_limit": block.char_limit,
+                "version": block.version,
+                "updated_at": _dt(block.updated_at),
+            }
+            for block in overview.core_blocks
+        ],
+        "archival_total": overview.archival_count,
+        "archival_facts_limit": 20,
+        "archival_facts": [
+            {
+                "id": fact.id,
+                "content": fact.content,
+                "tags": fact.tags,
+                "confidence": fact.confidence,
+                "source": fact.source,
+                "created_at": _dt(fact.created_at),
+                "last_used_at": _dt(fact.last_used_at),
+                "use_count": fact.use_count,
+            }
+            for fact in archival_facts
+        ],
+    }
 
 
 @mcp.tool()

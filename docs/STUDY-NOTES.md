@@ -2394,18 +2394,19 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 #### 3. 【已完成】写异步、读同步
 
-**当前现状**:`remember` / `forget` 在 MCP 层快速返回 `{"status":"accepted","mode":"async"}`,后台 `asyncio.create_task(_run_awake(command))` 继续跑 ReAct。`recall` / `list_memory` 仍然同步,因为 Claude Code 要拿结果才能回答用户。
+**当前现状**:`remember` / `forget` 在 MCP 层快速返回 `{"status":"accepted","mode":"async"}`,后台 `asyncio.create_task(_run_awake(command))` 继续跑 ReAct。`recall` 仍然同步走 Awake,因为 Claude Code 要拿语义搜索结果才能回答用户。`list_memory` 同步返回,但已经改成 direct DB fast path,不再走 Awake/DeepSeek。
 
 **按工具语义区分同步/异步**:
 
 | 工具类型 | 同步/异步 | 理由 |
 |---|---|---|
 | **`remember` / `forget`**(写) | **可异步 fire-and-forget** | 用户不等结果,立刻返回"已收到",后台跑 Awake |
-| **`recall` / `list_memory`**(读) | **必须同步** | Claude Code 要拿结果才能回答用户 |
+| **`recall`**(读 + 语义搜索) | **必须同步,走 Awake** | Claude Code 要拿召回结果才能回答用户 |
+| **`list_memory`**(读 + 概览) | **必须同步,直读 DB** | 新 session 起手要稳定拿到用户画像,不应该依赖 LLM provider |
 
 异步的代价:写类工具异步后**MCP 调用方拿不到 fact_id、拿不到同步去重结果、失败只进服务日志**。所以"写异步"成立的前提是 **写操作不需要同步返回信息**。
 
-> 面试话术:"Mneme 按工具语义做同步/异步拆分:写类工具 remember/forget 立刻 accepted,后台跑 Awake ReAct;读类工具 recall/list_memory 保持同步,因为结果会影响当前回答。这个取舍用最终一致换交互延迟,代价是写入失败需要看服务日志,后续可加失败队列或状态查询。"
+> 面试话术:"Mneme 按工具语义做同步/异步拆分:写类工具 remember/forget 立刻 accepted,后台跑 Awake ReAct;读类 recall 同步走 Awake,因为它需要语义检索和上下文组织;list_memory 同步但直读 DB,作为新 session 的稳定启动路径。这个取舍用最终一致换写入延迟,用 direct DB fast path 降低读概览的成本和故障面。"
 
 ---
 
@@ -3842,7 +3843,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | # | 优化点 | 现状 | 怎么改 | 出处 |
 |---|---|---|---|---|
 | 1 | **embedding 复用** | Day 14 已做:进程内 embedding cache,同文本复用向量 | 后续可加跨进程 cache / provider 级别 metrics | §5.1 讨论补录 |
-| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall`/`list_memory` 同步 | 后续可加后台失败队列 / 用户可查询写入状态 | §5.1 讨论补录 |
+| 2 | **写异步、读同步** | Day 14 已做:`remember`/`forget` 快速返回 accepted,后台跑;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | 后续可加后台失败队列 / 用户可查询写入状态 | §5.1 讨论补录 |
 | 3 | **swap 字段级合并** | swap 整行覆盖,丢 cycle 期间 Awake 的 use_count 更新 | 按字段分归属:语义字段(content/confidence)取 staging,统计字段(use_count/last_used)取主表回填 | §4.4 Q3 |
 | 4 | **大数据量放弃整表复制** | snapshot 整表复制到 staging,100 万行扛不住 | 改 MVCC 快照读(REPEATABLE READ,不锁不复制)+ 短事务只 apply 改动的少数行 | §4.4 Q1 |
 | 5 | **swap 加 lock_timeout** | Day 14 已做:swap transaction 内设置 `lock_timeout=500ms` | 后续可加 retry/backoff 和失败告警 | §4.4 Q2 |
@@ -3916,7 +3917,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 
 - 阻塞的是**那一次 Awake 请求**(不是整个服务——asyncio 事件循环还能处理别的请求)
 - 对写类工具:`remember` / `forget` 已不阻塞 Claude Code 当前回答,因为 MCP 层先返回 accepted
-- 对读类工具:`recall` / `list_memory` 仍同步,但有整体 45s 兜底
+- 对读类工具:`recall` 仍同步走 Awake,有整体 45s 兜底;`list_memory` 已改为 direct DB fast path,不受 Awake/DeepSeek 超时影响
 - 不会数据损坏(Awake tool 安全幂等),纯粹是**延时/体验**问题
 
 ## 4. 分层修复(每层挡一个维度,代码 + 代价)
@@ -3951,7 +3952,7 @@ return {"status": "queued"}
 ```
 - 挡:**从"减少卡时长"升级到"用户根本不等"**(回到 §5.1 写异步讨论)
 - 代价:写类失去同步去重 + fact_id 返回 + 失败用户不知道(需后台失败队列)
-- 注意:**读类(recall/list_memory)不能异步**,必须同步返回结果
+- 注意:**读类不能异步**,必须同步返回结果;但不是所有读都要走 Awake。`list_memory` 这种确定性概览已经直读 DB。
 
 → **组合策略**:1+2+3 是"防卡死"(限步数+限单步+限整体),4 是"防体验拖累"(写类不让等)。读类靠 1+2+3,写类靠 4。
 
@@ -3966,7 +3967,7 @@ return {"status": "queued"}
 
 ## 6. 一句话面试话术
 
-> "Awake ReAct 的风险我按四层拆:限步数、限单步、限整体、写类异步。现在代码里 `recursion_limit=8`,LLM `timeout=20s,max_retries=1`,外层 `wait_for=45s`;同时 remember/forget 快速返回 accepted 后台处理,recall/list_memory 同步但有超时兜底。剩余短板是监控和后台失败队列,这是后续生产化项。"
+> "Awake ReAct 的风险我按四层拆:限步数、限单步、限整体、写类异步。现在代码里 `recursion_limit=8`,LLM `timeout=20s,max_retries=1`,外层 `wait_for=45s`;同时 remember/forget 快速返回 accepted 后台处理,recall 同步但有超时兜底。list_memory 不再走 Awake,而是 direct DB fast path,作为新 session 的可靠用户画像入口。剩余短板是监控和后台失败队列,这是后续生产化项。"
 
 → 这个回答的价值:**把模糊的"会不会卡死"拆成"步数维度 + 单步维度 + 整体维度"三个可独立处理的问题,每个给代码级方案 + 代价 + 监控**。这是 senior 级的故障分析能力。
 

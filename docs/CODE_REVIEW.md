@@ -208,11 +208,13 @@ LangChain `@tool` 把 docstring 当 description 给 LLM。冗长 docstring 占 p
 
 **问题**:`list_memory()` 本质只是 SQL,但要 round-trip LLM。每个 MCP 调用 1-3 秒 + 几百 token。
 
+**当前状态**:Day 18 已修复。`list_memory` 保持同步返回,但 MCP 层直接查 `get_memory_overview` + `list_archival_facts`,不再走 Awake/DeepSeek。
+
 **Trade-off**:
 - ✅ 维持 agent 性(LLM-driven)
 - ❌ 延迟 + 成本
 
-**Day 05+ 改进**:给 `list_memory` 加 fast path(直接调 `store.get_memory_overview`,不走 LLM)。Awake agent system prompt 加一行 "for list_memory, return store overview directly"。
+**落地方案**:`remember` / `recall` / `forget` 保留 Agent 路径;`list_memory` 作为新 session 的启动读路径,用 direct DB fast path 换稳定性、低延迟和零 LLM 成本。
 
 ---
 

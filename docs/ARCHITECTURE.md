@@ -127,16 +127,24 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 **何时被调**:**新 session 开始第一次跟用户对话时**,LLM 想"知道用户是谁",一次性看 overview。
 
-**mneme 内部**:Awake agent ReAct → `get_overview` → 纯 SQL,无向量搜索,**比 recall 轻量**
+**mneme 内部**:MCP server direct DB fast path → `get_memory_overview` + `list_archival_facts`。
+
+这里**不走 Awake ReAct / DeepSeek**。原因是 `list_memory` 是确定性只读概览,不需要 LLM 推理;如果为了"统一架构"强行绕 Awake,DeepSeek 或代理环境一抖,新 session 反而拿不到用户画像。当前设计把它作为可靠的启动读路径。
 
 **返回**:
 ```json
 {
+  "status": "ok",
+  "mode": "direct_db",
   "core_blocks": [
-    {"label": "background", "value_preview": "Java backend intern...", "version": 3},
+    {"label": "background", "value": "Java backend intern...", "version": 3},
     ...
   ],
-  "archival_total": 47
+  "archival_total": 47,
+  "archival_facts_limit": 20,
+  "archival_facts": [
+    {"id": 2, "content": "Java backend developer...", "tags": ["career"]}
+  ]
 }
 ```
 
@@ -188,7 +196,7 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
 - 低 confidence + 长文本 → 先 search 看有没有近似
 - 检测到 dup → LLM 决定 skip / merge / 还是 insert
 
-简单 case(`forget` / `list_memory`)看起来是 1:1 多此一举,但**统一架构**有好处:未来想加复杂逻辑只改 prompt,不动代码。
+简单 case(`forget`)看起来是 1:1 多此一举,但**统一架构**有好处:未来想加复杂逻辑只改 prompt,不动代码。`list_memory` 是例外:它是新 session 的启动读路径,必须尽量稳定、低延迟、低成本,所以直接查 DB。
 
 **4 个 MCP tool ↔ Awake 5 个内部 @tool 对应表**:
 
@@ -196,7 +204,7 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
 |---|---|---|
 | `remember` | `search_archival` + `insert_archival_fact` | 1:多(LLM 决定怎么组合);MCP 层异步返回 |
 | `recall` | `load_core` + `search_archival` | 1:多 |
-| `list_memory` | `get_overview` | 1:1(简单 case) |
+| `list_memory` | 不走 Awake;MCP 层直读 DB | direct DB fast path |
 | `forget` | `forget_archival` | 1:1(简单 case);MCP 层异步返回 |
 
 **`forget` 完整四层调用链**(从你喊话到 SQL 落盘):
@@ -218,7 +226,7 @@ Layer 4: UPDATE archival_facts SET is_deleted=true WHERE id=37
          INSERT INTO memory_ops_log (...)
 ```
 
-**实际成本**(诚实):每次 ReAct = 至少 1 个 LLM call(几百 token,1-2 秒)。`list_memory` 这种本质 SQL 也走 LLM 确实有 overhead。Day 05+ 可能给 `list_memory` 加 fast path(已记在 `docs/CODE_REVIEW.md` P2-15)。
+**实际成本**(诚实):每次 ReAct = 至少 1 个 LLM call(几百 token,1-2 秒)。所以 Mneme 只让真正需要语义推理的 `remember` / `recall` / `forget` 走 Awake。`list_memory` 已改成 direct DB fast path,避免新 session 起手就依赖 DeepSeek。
 
 ---
 
