@@ -78,6 +78,7 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 - 临时状态、当天计划、短期情绪、一次性事件不记。
 - recent/temporary 信息先追问确认是否长期稳定。
 - 敏感信息保存前先确认。
+- 主动写入后给用户一个轻量确认,例如"我已记住:xxx。",避免静默写入。
 
 这层规则和 MCP tool description 分工不同:
 

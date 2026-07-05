@@ -112,6 +112,14 @@ claude mcp add --transport http --scope user mneme http://127.0.0.1:8000/mcp
 
 这一步很关键: MCP tool description 只能告诉 Claude Code "remember 工具能做什么",但不会强制它主动用。全局指令负责告诉 Claude Code:遇到长期稳定的用户事实时,不要等用户说"记一下",应主动调用 Mneme。
 
+当前全局指令还要求主动写入后给用户一个轻量确认,例如:
+
+```text
+我已记住:你长期通过足球、游戏、B 站和抖音放松。
+```
+
+这样用户不需要去数据库里猜 Claude 是否已经写入。
+
 两份配置的职责不同:
 
 | 配置 | 位置 | 作用 |
