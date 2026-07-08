@@ -905,7 +905,9 @@ memory_write_jobs.succeeded
 
 ### 7.5 `core_blocks_staging` / `archival_facts_staging`(Sleep 工作表)
 
-Sleep cycle 启动时建,跑完 swap,cleanup 时删。**main 跟 staging 的角色每个 cycle 都互换一次**(因为 swap 是三步 RENAME)。
+Sleep cycle 启动时 `DROP + CREATE` 一份 staging 副本。成功 `atomic_swap` 后,原来的 staging 会变成新的 main,原来的 main 会被改名成新的 staging,然后被 `TRUNCATE` 清空。也就是说:**成功 swap 后 staging 表会保留,但应该是空表**。
+
+`cleanup_staging()` 只在 cycle aborted / 没有 snapshot_ts / 显式清理测试时执行,会把 staging 表真正 `DROP` 掉。当前主路径选择保留空 staging 表,是因为三步 RENAME 本身会自然留下"旧 main 改名后的 staging";下次 snapshot 开始时仍会先 `DROP TABLE IF EXISTS *_staging CASCADE`,所以这些空表不会影响下一轮。
 
 ---
 
