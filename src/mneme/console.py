@@ -7,17 +7,28 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import text
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse
 from starlette.routing import Route
 
+from mneme.config import settings
+from mneme.db.models import get_sessionmaker
 from mneme.memory.inspect import collect_snapshot
 from mneme.memory.job_inspect import snapshot as collect_job_snapshot
 from mneme.memory.jobs import enqueue_awake_write
+from mneme.memory.worker import start_memory_write_worker, stop_memory_write_worker
 from mneme.sleep.agent import run_sleep_cycle
 
 BULK_MEMORY_SEED_PATH = Path(__file__).parents[2] / "data" / "bulk_memory_seed_100.jsonl"
 VALID_STABILITY = {"temporary", "stage", "long_term"}
+CORE_BLOCK_LABELS = (
+    "background",
+    "preferences",
+    "habits",
+    "skills",
+    "lessons_learned",
+)
 
 
 def build_remember_command(item: dict[str, Any]) -> str:
@@ -94,6 +105,61 @@ async def enqueue_bulk_memory_seed() -> dict[str, Any]:
     }
 
 
+async def clear_all_memory_data() -> dict[str, Any]:
+    session_maker = get_sessionmaker()
+    async with session_maker() as session:
+        before = {}
+        for table_name in (
+            "archival_facts",
+            "memory_ops_log",
+            "memory_write_jobs",
+        ):
+            count = (await session.execute(
+                text(f"SELECT count(*) FROM {table_name}")
+            )).scalar_one()
+            before[table_name] = int(count)
+
+        for table_name in (
+            "core_blocks_staging",
+            "archival_facts_staging",
+        ):
+            await session.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+
+        await session.execute(text(
+            """
+            TRUNCATE archival_facts, memory_ops_log, memory_write_jobs
+            RESTART IDENTITY
+            """
+        ))
+        await session.execute(text("DELETE FROM core_blocks"))
+        for label in CORE_BLOCK_LABELS:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO core_blocks
+                        (label, value, char_limit, version, last_writer, updated_at)
+                    VALUES
+                        (:label, '', 2000, 1, 'sleep_agent', now())
+                    """
+                ),
+                {"label": label},
+            )
+        await session.execute(text(
+            "ALTER SEQUENCE IF EXISTS archival_facts_id_seq RESTART WITH 1"
+        ))
+        await session.commit()
+
+    return {
+        "status": "ok",
+        "cleared": before,
+        "core_blocks_reset": len(CORE_BLOCK_LABELS),
+        "staging_tables_dropped": [
+            "core_blocks_staging",
+            "archival_facts_staging",
+        ],
+    }
+
+
 async def collect_console_snapshot() -> dict[str, Any]:
     """Collect dashboard data without invoking LLM-backed agents."""
     memory = await collect_snapshot(limit=40, include_deleted=False)
@@ -122,6 +188,18 @@ async def console_run_sleep(_request: Request) -> JSONResponse:
     })
 
 
+async def console_clear_all(request: Request) -> JSONResponse:
+    existing_worker = getattr(request.app.state, "memory_worker", None)
+    await stop_memory_write_worker(existing_worker)
+    request.app.state.memory_worker = None
+    try:
+        summary = await clear_all_memory_data()
+    finally:
+        if settings.memory_write_worker_enabled:
+            request.app.state.memory_worker = start_memory_write_worker()
+    return JSONResponse({"status": "ok", "summary": summary})
+
+
 async def console_bulk_remember(_request: Request) -> JSONResponse:
     return JSONResponse(await enqueue_bulk_memory_seed())
 
@@ -130,6 +208,7 @@ routes = [
     Route("/console", console_page, methods=["GET"]),
     Route("/api/console/snapshot", console_snapshot, methods=["GET"]),
     Route("/api/console/sleep/run", console_run_sleep, methods=["POST"]),
+    Route("/api/console/clear/run", console_clear_all, methods=["POST"]),
     Route("/api/console/bulk-remember/run", console_bulk_remember, methods=["POST"]),
 ]
 
@@ -276,6 +355,12 @@ CONSOLE_HTML = r"""
       background: var(--panel);
       color: var(--ink);
       border-color: var(--line);
+    }
+
+    .btn.danger {
+      background: var(--red);
+      color: #fffdf7;
+      border-color: var(--red);
     }
 
     .btn:disabled {
@@ -530,6 +615,7 @@ CONSOLE_HTML = r"""
         <div class="actions">
           <button class="btn secondary" id="refreshBtn">刷新</button>
           <button class="btn secondary" id="seedBtn">批量 remember 100 条</button>
+          <button class="btn danger" id="clearBtn">清空所有数据</button>
           <button class="btn" id="sleepBtn">运行 Sleep</button>
         </div>
       </div>
@@ -584,6 +670,7 @@ CONSOLE_HTML = r"""
       sleepOutput: document.getElementById("sleepOutput"),
       refreshBtn: document.getElementById("refreshBtn"),
       seedBtn: document.getElementById("seedBtn"),
+      clearBtn: document.getElementById("clearBtn"),
       sleepBtn: document.getElementById("sleepBtn"),
     };
 
@@ -753,8 +840,27 @@ CONSOLE_HTML = r"""
       }
     }
 
+    async function clearAllData() {
+      const ok = window.confirm("确定清空所有 Mneme 数据吗？这会删除 Facts、Ops Log、Write Jobs，并重置 Core Blocks。");
+      if (!ok) return;
+      els.clearBtn.disabled = true;
+      els.sleepOutput.textContent = "正在清空所有数据...";
+      try {
+        const response = await fetch("/api/console/clear/run", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        els.sleepOutput.textContent = JSON.stringify(data.summary || data, null, 2);
+        await refresh();
+      } catch (error) {
+        els.sleepOutput.textContent = `清空失败: ${error.message}`;
+      } finally {
+        els.clearBtn.disabled = false;
+      }
+    }
+
     els.refreshBtn.addEventListener("click", refresh);
     els.seedBtn.addEventListener("click", runBulkRemember);
+    els.clearBtn.addEventListener("click", clearAllData);
     els.sleepBtn.addEventListener("click", runSleep);
     refresh();
   </script>

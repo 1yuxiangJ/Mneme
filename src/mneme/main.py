@@ -43,12 +43,16 @@ async def lifespan(_app: Starlette) -> AsyncIterator[None]:
 
     scheduler = start_sleep_scheduler()
     memory_worker = start_memory_write_worker()
+    _app.state.memory_worker = memory_worker
     async with mcp.session_manager.run():
         try:
             yield
         finally:
             logger.info("mneme shutdown")
-            await stop_memory_write_worker(memory_worker)
+            await stop_memory_write_worker(
+                getattr(_app.state, "memory_worker", memory_worker)
+            )
+            _app.state.memory_worker = None
             if scheduler is not None:
                 scheduler.shutdown(wait=False)
             await dispose_engine()

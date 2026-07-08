@@ -19,6 +19,7 @@ def test_console_page_is_served(monkeypatch):
     assert "Mneme Console" in response.text
     assert "/api/console/snapshot" in response.text
     assert "/api/console/bulk-remember/run" in response.text
+    assert "/api/console/clear/run" in response.text
 
 
 def test_console_snapshot_api_returns_dashboard_payload(monkeypatch):
@@ -87,6 +88,48 @@ def test_console_sleep_run_api_returns_cycle_summary(monkeypatch):
     assert response.status_code == 200
     assert response.json()["summary"]["plan"] == ["promote", "reflect"]
     assert response.json()["summary"]["promote_count"] == 1
+
+
+def test_console_clear_api_stops_worker_clears_data_and_restarts(monkeypatch):
+    from mneme import console
+
+    calls: list[tuple[str, object | None]] = []
+
+    async def fake_clear_all_memory_data() -> dict[str, object]:
+        calls.append(("clear", None))
+        return {
+            "status": "ok",
+            "cleared": {
+                "archival_facts": 3,
+                "memory_ops_log": 2,
+                "memory_write_jobs": 5,
+            },
+        }
+
+    async def fake_stop_memory_write_worker(task: object | None) -> None:
+        calls.append(("stop", task))
+
+    def fake_start_memory_write_worker() -> object:
+        calls.append(("start", None))
+        return "new-worker"
+
+    monkeypatch.setattr(settings, "memory_write_worker_enabled", True)
+    monkeypatch.setattr(console, "clear_all_memory_data", fake_clear_all_memory_data)
+    monkeypatch.setattr(console, "stop_memory_write_worker", fake_stop_memory_write_worker)
+    monkeypatch.setattr(console, "start_memory_write_worker", fake_start_memory_write_worker)
+    app.state.memory_worker = "old-worker"
+
+    client = TestClient(app)
+    response = client.post("/api/console/clear/run")
+
+    assert response.status_code == 200
+    assert response.json()["summary"]["status"] == "ok"
+    assert calls == [
+        ("stop", "old-worker"),
+        ("clear", None),
+        ("start", None),
+    ]
+    assert app.state.memory_worker == "new-worker"
 
 
 def test_console_bulk_remember_api_enqueues_seed_jobs(monkeypatch, tmp_path):
