@@ -2,7 +2,9 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from starlette.requests import Request
@@ -11,7 +13,85 @@ from starlette.routing import Route
 
 from mneme.memory.inspect import collect_snapshot
 from mneme.memory.job_inspect import snapshot as collect_job_snapshot
+from mneme.memory.jobs import enqueue_awake_write
 from mneme.sleep.agent import run_sleep_cycle
+
+BULK_MEMORY_SEED_PATH = Path(__file__).parents[2] / "data" / "bulk_memory_seed_100.jsonl"
+VALID_STABILITY = {"temporary", "stage", "long_term"}
+
+
+def build_remember_command(item: dict[str, Any]) -> str:
+    tag_str = ", ".join(item["tags"]) if item["tags"] else "(none)"
+    return (
+        "remember this fact about the user:\n"
+        f"  content: {item['content']}\n"
+        f"  tags: {tag_str}\n"
+        f"  confidence: {item['confidence']}\n"
+        f"  stability: {item['stability']}\n"
+        f"  salience: {item['salience']}\n"
+        "First check for near-duplicates via search_archival, then insert."
+    )
+
+
+def _validate_seed_item(raw: dict[str, Any], line_no: int) -> dict[str, Any]:
+    content = raw.get("content")
+    tags = raw.get("tags")
+    confidence = raw.get("confidence")
+    stability = raw.get("stability")
+    salience = raw.get("salience")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError(f"seed line {line_no}: content must be a non-empty string")
+    if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+        raise ValueError(f"seed line {line_no}: tags must be a list of strings")
+    if confidence not in {1, 2, 3}:
+        raise ValueError(f"seed line {line_no}: confidence must be 1, 2, or 3")
+    if stability not in VALID_STABILITY:
+        raise ValueError(f"seed line {line_no}: stability must be temporary, stage, or long_term")
+    if salience not in {1, 2, 3}:
+        raise ValueError(f"seed line {line_no}: salience must be 1, 2, or 3")
+    return {
+        "content": content.strip(),
+        "tags": tags,
+        "confidence": confidence,
+        "stability": stability,
+        "salience": salience,
+    }
+
+
+def load_bulk_memory_seed(path: Path | None = None) -> list[dict[str, Any]]:
+    seed_path = path or BULK_MEMORY_SEED_PATH
+    items: list[dict[str, Any]] = []
+    with seed_path.open("r", encoding="utf-8") as fh:
+        for line_no, line in enumerate(fh, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            raw = json.loads(stripped)
+            if not isinstance(raw, dict):
+                raise ValueError(f"seed line {line_no}: expected JSON object")
+            items.append(_validate_seed_item(raw, line_no))
+    return items
+
+
+async def enqueue_bulk_memory_seed() -> dict[str, Any]:
+    items = load_bulk_memory_seed()
+    jobs: list[dict[str, Any]] = []
+    for item in items:
+        job = await enqueue_awake_write("remember", build_remember_command(item), item)
+        jobs.append({
+            "id": job.id,
+            "status": job.status,
+            "content": item["content"],
+        })
+    accepted_count = sum(1 for job in jobs if job["status"] in {"pending", "running", "succeeded"})
+    return {
+        "status": "ok",
+        "mode": "durable_async",
+        "dataset": str(BULK_MEMORY_SEED_PATH),
+        "dataset_count": len(items),
+        "accepted_count": accepted_count,
+        "jobs": jobs,
+    }
 
 
 async def collect_console_snapshot() -> dict[str, Any]:
@@ -42,10 +122,15 @@ async def console_run_sleep(_request: Request) -> JSONResponse:
     })
 
 
+async def console_bulk_remember(_request: Request) -> JSONResponse:
+    return JSONResponse(await enqueue_bulk_memory_seed())
+
+
 routes = [
     Route("/console", console_page, methods=["GET"]),
     Route("/api/console/snapshot", console_snapshot, methods=["GET"]),
     Route("/api/console/sleep/run", console_run_sleep, methods=["POST"]),
+    Route("/api/console/bulk-remember/run", console_bulk_remember, methods=["POST"]),
 ]
 
 
@@ -444,6 +529,7 @@ CONSOLE_HTML = r"""
         </div>
         <div class="actions">
           <button class="btn secondary" id="refreshBtn">刷新</button>
+          <button class="btn secondary" id="seedBtn">批量 remember 100 条</button>
           <button class="btn" id="sleepBtn">运行 Sleep</button>
         </div>
       </div>
@@ -478,7 +564,7 @@ CONSOLE_HTML = r"""
           </section>
 
           <section>
-            <div class="section-head"><h2>Sleep Result</h2><span class="label">手动运行输出</span></div>
+            <div class="section-head"><h2>操作结果</h2><span class="label">Sleep / bulk remember 输出</span></div>
             <div class="section-body"><pre id="sleepOutput">{}</pre></div>
           </section>
         </div>
@@ -497,6 +583,7 @@ CONSOLE_HTML = r"""
       opsTimeline: document.getElementById("opsTimeline"),
       sleepOutput: document.getElementById("sleepOutput"),
       refreshBtn: document.getElementById("refreshBtn"),
+      seedBtn: document.getElementById("seedBtn"),
       sleepBtn: document.getElementById("sleepBtn"),
     };
 
@@ -650,7 +737,24 @@ CONSOLE_HTML = r"""
       }
     }
 
+    async function runBulkRemember() {
+      els.seedBtn.disabled = true;
+      els.sleepOutput.textContent = "正在批量入队 remember jobs...";
+      try {
+        const response = await fetch("/api/console/bulk-remember/run", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+        els.sleepOutput.textContent = JSON.stringify(data, null, 2);
+        await refresh();
+      } catch (error) {
+        els.sleepOutput.textContent = `批量 remember 失败: ${error.message}`;
+      } finally {
+        els.seedBtn.disabled = false;
+      }
+    }
+
     els.refreshBtn.addEventListener("click", refresh);
+    els.seedBtn.addEventListener("click", runBulkRemember);
     els.sleepBtn.addEventListener("click", runSleep);
     refresh();
   </script>

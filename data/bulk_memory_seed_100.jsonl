@@ -1,0 +1,100 @@
+{"content":"用户偏好直接、具体、工程化的中文解释，不喜欢模糊问题和空泛表达。","tags":["seed_demo","communication","preference"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户在学习复杂系统时，希望先理解整体链路，再拆分模块细节。","tags":["seed_demo","study","learning"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户对问题的边界和前置假设比较敏感，倾向于先把概念定义清楚。","tags":["seed_demo","communication","reasoning"],"confidence":2,"stability":"long_term","salience":3}
+{"content":"用户希望 AI 在讲解技术方案时说明为什么这样做，而不是只给结论。","tags":["seed_demo","communication","preference"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户更容易接受结合当前项目代码和具体文件的解释。","tags":["seed_demo","study","code"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户不喜欢把简单问题复杂化，倾向于选择清晰、轻量、能落地的方案。","tags":["seed_demo","engineering","preference"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户在学习数据库机制时，会追问事务、锁、日志一致性等底层细节。","tags":["seed_demo","database","study"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望每次项目施工都有明确痕迹，方便后续向 AI 追问背景。","tags":["seed_demo","project","documentation"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户倾向于让 AI 直接推进项目实现，不希望频繁停下来做中间验证。","tags":["seed_demo","workflow","preference"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望最后集中做验证，而不是在每个小步骤都手动确认。","tags":["seed_demo","workflow","testing"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户对 UI 的一致性比较敏感，会注意模块滚动、加载方式和信息密度。","tags":["seed_demo","ui","preference"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户更喜欢控制台型 UI，而不是面向普通用户的产品化 UI。","tags":["seed_demo","ui","tooling"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望自用工具页面以中文为主，只保留专业名词的英文原文。","tags":["seed_demo","ui","language"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"用户在评估方案时会关注面试讲述价值，而不仅是功能是否能跑。","tags":["seed_demo","career","project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望简历项目体现工程价值，不希望看起来像玩具项目。","tags":["seed_demo","career","resume-project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户是 Java 后端开发方向，正在准备实习和校招。","tags":["seed_demo","career","backend"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户倾向于选择能体现后端工程能力的 Agent 项目。","tags":["seed_demo","career","agent"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望项目有真实业务场景，能够在面试中讲清楚价值。","tags":["seed_demo","career","project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户目前把 Mneme 作为个人简历项目来打磨。","tags":["seed_demo","mneme","resume-project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户关心 Agent 项目和 workflow 项目的边界，希望做真正的 Agent。","tags":["seed_demo","agent","architecture"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户对长期记忆 Agent 的差异化价值感兴趣。","tags":["seed_demo","agent","memory"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户会比较 Mneme、Letta、Claude Code 和 Codex 在记忆能力上的差异。","tags":["seed_demo","agent","comparison"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望项目保留多 Agent 或多会话记忆隔离这类能讲出架构深度的点。","tags":["seed_demo","architecture","memory"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户关注记忆系统在窗口之间如何共享或隔离。","tags":["seed_demo","memory","architecture"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户认为不同业务场景的 Agent 不应该只靠用户随便使用来形成方向。","tags":["seed_demo","agent","product"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望能解释编程 Agent 和销售跟进 Agent 在开发阶段的特异化差异。","tags":["seed_demo","agent","product"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户对 Sleep 机制里的 promote、demote、resolve、refresh 等阶段有持续学习兴趣。","tags":["seed_demo","sleep","memory"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望理解 Core 和 Archival 的职责边界，而不只是知道表结构。","tags":["seed_demo","memory","architecture"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户会追问 Core 记忆过期问题，希望系统能处理过时信息。","tags":["seed_demo","memory","sleep"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户认为 Archival 里的冲突可以通过后续 promote 或 demote 间接解决。","tags":["seed_demo","memory","reasoning"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户倾向于把 Core 看作高密度、需要维护质量的用户画像。","tags":["seed_demo","memory","core"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望 Sleep 失败时能够讲清楚日志和主表状态之间的关系。","tags":["seed_demo","sleep","database"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户关注 staging 表、主表 swap、事务边界和日志一致性的设计。","tags":["seed_demo","database","sleep"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户倾向于用 pending ops 这类更清晰的方案处理 Sleep 日志一致性。","tags":["seed_demo","database","architecture"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户在方案复杂时会主动要求更简洁、更巧妙的实现。","tags":["seed_demo","engineering","preference"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户希望可靠性设计够用但不过度工程化。","tags":["seed_demo","engineering","reliability"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户接受数据库队列作为 remember 异步写入可靠性的简化方案。","tags":["seed_demo","memory","queue"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望 recall 失败时有更友好的重试或降级机制。","tags":["seed_demo","memory","reliability"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户理解同步写 remember 会影响 Claude Code 响应速度，因此倾向于异步写。","tags":["seed_demo","performance","memory"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望 forget 也具备可靠处理能力，避免删除意图丢失。","tags":["seed_demo","memory","reliability"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户目前主要使用 macOS 本机环境开发 Mneme。","tags":["seed_demo","environment","macos"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户使用 DataGrip 查看和管理 PostgreSQL 数据库。","tags":["seed_demo","database","tooling"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户会通过 PostgreSQL 表内容验证记忆写入和 Sleep 效果。","tags":["seed_demo","database","testing"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望 Mneme 能直接接入 Claude Code 的 MCP 工具链。","tags":["seed_demo","mcp","claude-code"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望不需要 cd 到项目目录也能使用 Mneme MCP。","tags":["seed_demo","mcp","workflow"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户机器上的 GitHub 访问通常需要走 Clash 代理，但 Mneme MCP 连接需要绕过代理。","tags":["seed_demo","network","proxy"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户已经把 Mneme 项目推送到自己的 GitHub 仓库。","tags":["seed_demo","github","project"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望后续项目开发过程中定期推送 GitHub。","tags":["seed_demo","github","workflow"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户使用 uv 管理 Python 项目的运行和依赖。","tags":["seed_demo","python","tooling"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户会用本地脚本手动运行 Sleep 来观察记忆整理结果。","tags":["seed_demo","sleep","testing"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户对 Ruff 和 mypy 的作用有学习需求，但更关心它们如何服务项目质量。","tags":["seed_demo","python","quality"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户更偏 Java 后端，对 Python 项目的工程化习惯需要通过项目逐步熟悉。","tags":["seed_demo","python","backend"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望 AI 在改代码时同步说明关键流程变化，帮助形成面试讲述素材。","tags":["seed_demo","communication","project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望文档中的 Architecture 和 Study Notes 面向自己阅读，其他文档主要服务 AI 续写。","tags":["seed_demo","documentation","workflow"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户不希望把自用控制台 UI 写进面试文档。","tags":["seed_demo","documentation","ui"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望 Architecture 文档对 demote 和 resolve 有完整解释，而不是跳过关键阶段。","tags":["seed_demo","documentation","architecture"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户认为文档应该能回答后续对项目细节的疑惑。","tags":["seed_demo","documentation","preference"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户喜欢在项目中保留施工记录，方便复盘每轮决策。","tags":["seed_demo","documentation","workflow"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户会要求 AI review 文档，清理过时信息和实际状态不符的内容。","tags":["seed_demo","documentation","quality"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望代码级别工作完成后继续做调优，而不是只满足能跑。","tags":["seed_demo","engineering","quality"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户喜欢踢足球，但最近一段时间踢得不多。","tags":["seed_demo","hobby","sports"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户过去有健身习惯，最近暂停了训练。","tags":["seed_demo","lifestyle","fitness"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户喜欢玩游戏，最近主要玩 CS2。","tags":["seed_demo","hobby","gaming"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户每周会玩 CS2，主要打箱子模式，不打高压竞技。","tags":["seed_demo","gaming","lifestyle"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户之前在 PS5 和 Nintendo Switch 上玩过较多单机游戏。","tags":["seed_demo","gaming","entertainment"],"confidence":3,"stability":"stage","salience":1}
+{"content":"用户最近游戏机不在身边，所以主要用电脑玩游戏。","tags":["seed_demo","gaming","context"],"confidence":3,"stability":"temporary","salience":1}
+{"content":"用户会刷 B 站和抖音作为长期放松方式。","tags":["seed_demo","entertainment","lifestyle"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"用户喜欢麦当劳的现炸薯条。","tags":["seed_demo","preference","food"],"confidence":3,"stability":"long_term","salience":1}
+{"content":"用户对生活类记忆也感兴趣，不希望记忆系统只记录工作学习。","tags":["seed_demo","memory","lifestyle"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"用户希望 Claude 能主动聊生活话题，从而自然触发记忆写入。","tags":["seed_demo","memory","conversation"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户不想在测试自主记忆时直接告诉 Claude 调用 Mneme 工具。","tags":["seed_demo","memory","testing"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望 AI 自己判断哪些生活偏好值得记住。","tags":["seed_demo","memory","preference"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"用户希望记忆写入后最好能被明确告知，避免只能去数据库里检查。","tags":["seed_demo","memory","ux"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户担心 remember 调用结果在对话层丢失，后续希望补偿或确认机制。","tags":["seed_demo","memory","reliability"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户认为 confidence 如果绝大多数都是 3，就失去了区分度。","tags":["seed_demo","memory","signal"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户接受把 confidence 拆成 factual certainty，并用 salience 表达未来有用性。","tags":["seed_demo","memory","signal"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望已有记忆可以由模型重新判断 confidence 和 salience。","tags":["seed_demo","memory","maintenance"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户会通过 DataGrip 观察记忆记录的排序、字段和标签。","tags":["seed_demo","database","testing"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户注意到数据库 ID 顺序和页面排序可能不一致，会追问排序依据。","tags":["seed_demo","database","ui"],"confidence":2,"stability":"stage","salience":1}
+{"content":"用户希望控制台刷新时能看到数据库最新状态。","tags":["seed_demo","ui","database"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户希望控制台上的运行 Sleep 按钮能手动触发完整 Sleep 流程。","tags":["seed_demo","ui","sleep"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户认为批量创造测试数据比一轮轮对话更适合调试记忆系统。","tags":["seed_demo","testing","memory"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望批量测试数据仍然走 remember 链路，而不是直接插入 fact 表。","tags":["seed_demo","testing","memory"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户关心批量 remember 对 token 成本和 API 费用的影响。","tags":["seed_demo","cost","llm"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户更愿意先用几十到一百条数据观察系统行为，再考虑更大规模压测。","tags":["seed_demo","testing","workflow"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望测试数据写得像真实数据，而不是机械模板。","tags":["seed_demo","testing","data"],"confidence":3,"stability":"stage","salience":2}
+{"content":"用户在面试准备中会关注项目能否讲出可靠性、异步队列和失败恢复。","tags":["seed_demo","interview","reliability"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望项目讲述时能体现数据库事务和一致性设计。","tags":["seed_demo","interview","database"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望项目讲述时能体现 Agent 的长期记忆管理，而不是普通 CRUD。","tags":["seed_demo","interview","agent"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户会把 Mneme 的 Awake 和 Sleep 两阶段作为项目核心卖点之一。","tags":["seed_demo","interview","architecture"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望能解释为什么 Core 只由 Sleep 写，Awake 主要写 Archival。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望能解释为什么异步 remember 不影响 Claude Code 主响应速度。","tags":["seed_demo","interview","performance"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望能解释数据库队列相对 Kafka 或 Redis Stream 的取舍。","tags":["seed_demo","interview","queue"],"confidence":2,"stability":"stage","salience":3}
+{"content":"用户希望能解释 Sleep staging 表为什么存在，以及为什么看到 staging 表不一定是错误。","tags":["seed_demo","interview","database"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望能解释 ops log 记录的是 Sleep 执行过程，而不一定代表主表已经切换成功。","tags":["seed_demo","interview","sleep"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望能解释 promote 规则为什么不能把所有偏好都塞进 Core。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望能解释 habits、preference 和 lifestyle summary 之间的区别。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":2}
+{"content":"用户希望项目最终既能本地体验，又能在简历里讲清楚架构演进过程。","tags":["seed_demo","interview","project"],"confidence":3,"stability":"stage","salience":3}
+{"content":"用户希望 AI 不要在没有实际验证时声称功能完成。","tags":["seed_demo","engineering","testing"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"用户希望遇到失败时直接说明失败原因和下一步处理，而不是绕开问题。","tags":["seed_demo","communication","debugging"],"confidence":3,"stability":"long_term","salience":3}
