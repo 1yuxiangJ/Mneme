@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse
 from starlette.routing import Mount, Route
 
 from mneme.config import settings
+from mneme.console import routes as console_routes
 from mneme.db.models import dispose_engine
 from mneme.mcp_server import mcp
 
@@ -57,6 +58,7 @@ app = Starlette(
     debug=False,
     routes=[
         Route("/health", health),
+        *console_routes,
         Mount("/", app=mcp.streamable_http_app()),
     ],
     lifespan=lifespan,
