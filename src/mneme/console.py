@@ -316,9 +316,23 @@ CONSOLE_HTML = r"""
       line-height: 1.45;
     }
 
-    .scroll {
+    .panel-scroll {
       overflow: auto;
-      max-height: 520px;
+      max-height: 420px;
+    }
+
+    .panel-scroll.compact {
+      max-height: 300px;
+    }
+
+    .timeline-scroll {
+      padding: 14px 16px 16px;
+    }
+
+    .panel-scroll th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
     }
 
     .chip {
@@ -448,19 +462,19 @@ CONSOLE_HTML = r"""
 
           <section id="facts">
             <div class="section-head"><h2>Archival Facts</h2><span class="label">最新有效 facts</span></div>
-            <div class="scroll"><table id="factsTable"></table></div>
+            <div class="panel-scroll"><table id="factsTable"></table></div>
           </section>
         </div>
 
         <div>
           <section id="jobs">
             <div class="section-head"><h2>Write Jobs</h2><span class="label">remember / forget</span></div>
-            <div class="scroll"><table id="jobsTable"></table></div>
+            <div class="panel-scroll compact"><table id="jobsTable"></table></div>
           </section>
 
           <section id="ops">
             <div class="section-head"><h2>Ops Log</h2><span class="label">最近变更</span></div>
-            <div class="section-body"><div class="timeline" id="opsTimeline"></div></div>
+            <div class="panel-scroll compact timeline-scroll"><div class="timeline" id="opsTimeline"></div></div>
           </section>
 
           <section>
