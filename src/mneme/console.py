@@ -51,7 +51,7 @@ routes = [
 
 CONSOLE_HTML = r"""
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -412,9 +412,9 @@ CONSOLE_HTML = r"""
   <div class="shell">
     <aside>
       <h1 class="brand">Mneme</h1>
-      <div class="subtitle">Local memory console for Claude Code. Durable writes, archival facts, Sleep ops, and core blocks in one place.</div>
+      <div class="subtitle">Claude Code 的本地记忆控制台。集中查看 Durable Writes、Archival Facts、Sleep Ops 和 Core Blocks。</div>
       <nav>
-        <a href="#overview">Overview</a>
+        <a href="#overview">概览</a>
         <a href="#core">Core</a>
         <a href="#facts">Facts</a>
         <a href="#jobs">Jobs</a>
@@ -425,29 +425,29 @@ CONSOLE_HTML = r"""
       <div class="topbar">
         <div>
           <h1>Mneme Console</h1>
-          <div class="dek">A local operator view for the memory system behind Claude Code. Use it to inspect what was remembered, whether async writes finished, and what Sleep changed.</div>
-          <div id="status" class="status-line">Loading snapshot...</div>
+          <div class="dek">这是 Mneme 的本地观察面，用来查看已经记住的内容、异步写入是否完成，以及 Sleep 对记忆做了哪些整理。</div>
+          <div id="status" class="status-line">正在加载快照...</div>
         </div>
         <div class="actions">
-          <button class="btn secondary" id="refreshBtn">Refresh</button>
-          <button class="btn" id="sleepBtn">Run Sleep</button>
+          <button class="btn secondary" id="refreshBtn">刷新</button>
+          <button class="btn" id="sleepBtn">运行 Sleep</button>
         </div>
       </div>
 
       <section id="overview">
-        <div class="section-head"><h2>Overview</h2><span id="generatedAt" class="label"></span></div>
+        <div class="section-head"><h2>概览</h2><span id="generatedAt" class="label"></span></div>
         <div class="section-body stats" id="stats"></div>
       </section>
 
       <div class="grid">
         <div>
           <section id="core">
-            <div class="section-head"><h2>Core Blocks</h2><span class="label">Sleep-owned</span></div>
+            <div class="section-head"><h2>Core Blocks</h2><span class="label">Sleep 管理</span></div>
             <div class="section-body"><div class="core-grid" id="coreBlocks"></div></div>
           </section>
 
           <section id="facts">
-            <div class="section-head"><h2>Archival Facts</h2><span class="label">Latest active facts</span></div>
+            <div class="section-head"><h2>Archival Facts</h2><span class="label">最新有效 facts</span></div>
             <div class="scroll"><table id="factsTable"></table></div>
           </section>
         </div>
@@ -459,12 +459,12 @@ CONSOLE_HTML = r"""
           </section>
 
           <section id="ops">
-            <div class="section-head"><h2>Ops Log</h2><span class="label">Recent mutations</span></div>
+            <div class="section-head"><h2>Ops Log</h2><span class="label">最近变更</span></div>
             <div class="section-body"><div class="timeline" id="opsTimeline"></div></div>
           </section>
 
           <section>
-            <div class="section-head"><h2>Sleep Result</h2><span class="label">Manual run output</span></div>
+            <div class="section-head"><h2>Sleep Result</h2><span class="label">手动运行输出</span></div>
             <div class="section-body"><pre id="sleepOutput">{}</pre></div>
           </section>
         </div>
@@ -518,12 +518,12 @@ CONSOLE_HTML = r"""
       const pendingJobs = jobs.filter((job) => job.status === "pending" || job.status === "running").length;
       const recentOps = (memory.recent_ops || []).length;
       const items = [
-        ["Active Facts", counts.active_archival_facts ?? 0],
-        ["Deleted Facts", counts.deleted_archival_facts ?? 0],
-        ["Open Jobs", pendingJobs],
-        ["Recent Ops", recentOps],
+        ["有效 Facts", counts.active_archival_facts ?? 0],
+        ["已删除 Facts", counts.deleted_archival_facts ?? 0],
+        ["未完成 Jobs", pendingJobs],
+        ["最近 Ops", recentOps],
       ];
-      if (failedJobs > 0) items[2][1] = `${pendingJobs} / ${failedJobs} failed`;
+      if (failedJobs > 0) items[2][1] = `${pendingJobs} 未完成 / ${failedJobs} failed`;
       els.stats.innerHTML = items.map(([label, value]) => `
         <div class="stat"><div class="label">${esc(label)}</div><div class="value">${esc(value)}</div></div>
       `).join("");
@@ -531,24 +531,24 @@ CONSOLE_HTML = r"""
 
     function renderCore(blocks) {
       if (!blocks || blocks.length === 0) {
-        els.coreBlocks.innerHTML = `<p class="empty">No core blocks found.</p>`;
+        els.coreBlocks.innerHTML = `<p class="empty">没有 Core Blocks。</p>`;
         return;
       }
       els.coreBlocks.innerHTML = blocks.map((block) => `
         <article class="core-card">
           <h3>${esc(block.label)} <span class="chip">v${esc(block.version)}</span></h3>
-          <p>${esc(block.value || "Empty")}</p>
+          <p>${esc(block.value || "空")}</p>
         </article>
       `).join("");
     }
 
     function renderFacts(facts) {
       if (!facts || facts.length === 0) {
-        els.factsTable.innerHTML = `<tbody><tr><td class="empty">No active archival facts.</td></tr></tbody>`;
+        els.factsTable.innerHTML = `<tbody><tr><td class="empty">没有有效 Archival Facts。</td></tr></tbody>`;
         return;
       }
       els.factsTable.innerHTML = `
-        <thead><tr><th>ID</th><th>Content</th><th>Signals</th><th>Use</th><th>Created</th></tr></thead>
+        <thead><tr><th>ID</th><th>内容</th><th>Signals</th><th>使用次数</th><th>创建时间</th></tr></thead>
         <tbody>
         ${facts.map((fact) => `
           <tr>
@@ -564,11 +564,11 @@ CONSOLE_HTML = r"""
 
     function renderJobs(jobs) {
       if (!jobs || jobs.length === 0) {
-        els.jobsTable.innerHTML = `<tbody><tr><td class="empty">No write jobs yet.</td></tr></tbody>`;
+        els.jobsTable.innerHTML = `<tbody><tr><td class="empty">没有 Write Jobs。</td></tr></tbody>`;
         return;
       }
       els.jobsTable.innerHTML = `
-        <thead><tr><th>ID</th><th>Op</th><th>Status</th><th>Attempts</th><th>Updated</th></tr></thead>
+        <thead><tr><th>ID</th><th>Op</th><th>状态</th><th>尝试次数</th><th>更新时间</th></tr></thead>
         <tbody>
         ${jobs.map((job) => `
           <tr>
@@ -584,20 +584,20 @@ CONSOLE_HTML = r"""
 
     function renderOps(ops) {
       if (!ops || ops.length === 0) {
-        els.opsTimeline.innerHTML = `<p class="empty">No recent ops.</p>`;
+        els.opsTimeline.innerHTML = `<p class="empty">没有最近 Ops。</p>`;
         return;
       }
       els.opsTimeline.innerHTML = ops.map((op) => `
         <div class="op">
           <strong>${esc(op.op_type)} ${chip(op.actor)} ${op.target_id ? chip(op.target_id) : ""}</strong>
-          <p>${esc(op.reason || op.after_value_preview || op.before_value_preview || "No reason recorded.")}</p>
+          <p>${esc(op.reason || op.after_value_preview || op.before_value_preview || "没有记录 reason。")}</p>
           <p class="mono">${esc(fmtTime(op.ts))}</p>
         </div>
       `).join("");
     }
 
     function render(data) {
-      els.generatedAt.textContent = data.generated_at ? `generated ${fmtTime(data.generated_at)}` : "";
+      els.generatedAt.textContent = data.generated_at ? `生成于 ${fmtTime(data.generated_at)}` : "";
       renderStats(data);
       renderCore((data.memory || {}).core_blocks || []);
       renderFacts((data.memory || {}).archival_facts || []);
@@ -606,16 +606,16 @@ CONSOLE_HTML = r"""
     }
 
     async function refresh() {
-      els.status.textContent = "Loading snapshot...";
+      els.status.textContent = "正在加载快照...";
       els.refreshBtn.disabled = true;
       try {
         const response = await fetch("/api/console/snapshot");
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         render(data);
-        els.status.textContent = "Snapshot loaded.";
+        els.status.textContent = "快照加载完成。";
       } catch (error) {
-        els.status.textContent = `Snapshot failed: ${error.message}`;
+        els.status.textContent = `快照加载失败: ${error.message}`;
       } finally {
         els.refreshBtn.disabled = false;
       }
@@ -623,14 +623,14 @@ CONSOLE_HTML = r"""
 
     async function runSleep() {
       els.sleepBtn.disabled = true;
-      els.sleepOutput.textContent = "Running Sleep...";
+      els.sleepOutput.textContent = "Sleep 运行中...";
       try {
         const response = await fetch("/api/console/sleep/run", { method: "POST" });
         const data = await response.json();
         els.sleepOutput.textContent = JSON.stringify(data.summary || data, null, 2);
         await refresh();
       } catch (error) {
-        els.sleepOutput.textContent = `Sleep failed: ${error.message}`;
+        els.sleepOutput.textContent = `Sleep 运行失败: ${error.message}`;
       } finally {
         els.sleepBtn.disabled = false;
       }
