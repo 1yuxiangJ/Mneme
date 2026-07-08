@@ -123,6 +123,7 @@ def test_bulk_memory_seed_dataset_contains_100_valid_items():
     assert len(items) == 100
     assert len({item["content"] for item in items}) == 100
     assert all("seed_demo" in item["tags"] for item in items)
+    assert all("synthetic" in item["tags"] for item in items)
     assert all(item["confidence"] in {1, 2, 3} for item in items)
     assert all(item["stability"] in {"temporary", "stage", "long_term"} for item in items)
     assert all(item["salience"] in {1, 2, 3} for item in items)

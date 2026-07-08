@@ -1,100 +1,100 @@
-{"content":"用户偏好直接、具体、工程化的中文解释，不喜欢模糊问题和空泛表达。","tags":["seed_demo","communication","preference"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户在学习复杂系统时，希望先理解整体链路，再拆分模块细节。","tags":["seed_demo","study","learning"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户对问题的边界和前置假设比较敏感，倾向于先把概念定义清楚。","tags":["seed_demo","communication","reasoning"],"confidence":2,"stability":"long_term","salience":3}
-{"content":"用户希望 AI 在讲解技术方案时说明为什么这样做，而不是只给结论。","tags":["seed_demo","communication","preference"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户更容易接受结合当前项目代码和具体文件的解释。","tags":["seed_demo","study","code"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户不喜欢把简单问题复杂化，倾向于选择清晰、轻量、能落地的方案。","tags":["seed_demo","engineering","preference"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户在学习数据库机制时，会追问事务、锁、日志一致性等底层细节。","tags":["seed_demo","database","study"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望每次项目施工都有明确痕迹，方便后续向 AI 追问背景。","tags":["seed_demo","project","documentation"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户倾向于让 AI 直接推进项目实现，不希望频繁停下来做中间验证。","tags":["seed_demo","workflow","preference"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望最后集中做验证，而不是在每个小步骤都手动确认。","tags":["seed_demo","workflow","testing"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户对 UI 的一致性比较敏感，会注意模块滚动、加载方式和信息密度。","tags":["seed_demo","ui","preference"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户更喜欢控制台型 UI，而不是面向普通用户的产品化 UI。","tags":["seed_demo","ui","tooling"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望自用工具页面以中文为主，只保留专业名词的英文原文。","tags":["seed_demo","ui","language"],"confidence":3,"stability":"long_term","salience":2}
-{"content":"用户在评估方案时会关注面试讲述价值，而不仅是功能是否能跑。","tags":["seed_demo","career","project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望简历项目体现工程价值，不希望看起来像玩具项目。","tags":["seed_demo","career","resume-project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户是 Java 后端开发方向，正在准备实习和校招。","tags":["seed_demo","career","backend"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户倾向于选择能体现后端工程能力的 Agent 项目。","tags":["seed_demo","career","agent"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望项目有真实业务场景，能够在面试中讲清楚价值。","tags":["seed_demo","career","project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户目前把 Mneme 作为个人简历项目来打磨。","tags":["seed_demo","mneme","resume-project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户关心 Agent 项目和 workflow 项目的边界，希望做真正的 Agent。","tags":["seed_demo","agent","architecture"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户对长期记忆 Agent 的差异化价值感兴趣。","tags":["seed_demo","agent","memory"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户会比较 Mneme、Letta、Claude Code 和 Codex 在记忆能力上的差异。","tags":["seed_demo","agent","comparison"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望项目保留多 Agent 或多会话记忆隔离这类能讲出架构深度的点。","tags":["seed_demo","architecture","memory"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户关注记忆系统在窗口之间如何共享或隔离。","tags":["seed_demo","memory","architecture"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户认为不同业务场景的 Agent 不应该只靠用户随便使用来形成方向。","tags":["seed_demo","agent","product"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望能解释编程 Agent 和销售跟进 Agent 在开发阶段的特异化差异。","tags":["seed_demo","agent","product"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户对 Sleep 机制里的 promote、demote、resolve、refresh 等阶段有持续学习兴趣。","tags":["seed_demo","sleep","memory"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望理解 Core 和 Archival 的职责边界，而不只是知道表结构。","tags":["seed_demo","memory","architecture"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户会追问 Core 记忆过期问题，希望系统能处理过时信息。","tags":["seed_demo","memory","sleep"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户认为 Archival 里的冲突可以通过后续 promote 或 demote 间接解决。","tags":["seed_demo","memory","reasoning"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户倾向于把 Core 看作高密度、需要维护质量的用户画像。","tags":["seed_demo","memory","core"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望 Sleep 失败时能够讲清楚日志和主表状态之间的关系。","tags":["seed_demo","sleep","database"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户关注 staging 表、主表 swap、事务边界和日志一致性的设计。","tags":["seed_demo","database","sleep"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户倾向于用 pending ops 这类更清晰的方案处理 Sleep 日志一致性。","tags":["seed_demo","database","architecture"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户在方案复杂时会主动要求更简洁、更巧妙的实现。","tags":["seed_demo","engineering","preference"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户希望可靠性设计够用但不过度工程化。","tags":["seed_demo","engineering","reliability"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户接受数据库队列作为 remember 异步写入可靠性的简化方案。","tags":["seed_demo","memory","queue"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望 recall 失败时有更友好的重试或降级机制。","tags":["seed_demo","memory","reliability"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户理解同步写 remember 会影响 Claude Code 响应速度，因此倾向于异步写。","tags":["seed_demo","performance","memory"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望 forget 也具备可靠处理能力，避免删除意图丢失。","tags":["seed_demo","memory","reliability"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户目前主要使用 macOS 本机环境开发 Mneme。","tags":["seed_demo","environment","macos"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户使用 DataGrip 查看和管理 PostgreSQL 数据库。","tags":["seed_demo","database","tooling"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户会通过 PostgreSQL 表内容验证记忆写入和 Sleep 效果。","tags":["seed_demo","database","testing"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望 Mneme 能直接接入 Claude Code 的 MCP 工具链。","tags":["seed_demo","mcp","claude-code"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望不需要 cd 到项目目录也能使用 Mneme MCP。","tags":["seed_demo","mcp","workflow"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户机器上的 GitHub 访问通常需要走 Clash 代理，但 Mneme MCP 连接需要绕过代理。","tags":["seed_demo","network","proxy"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户已经把 Mneme 项目推送到自己的 GitHub 仓库。","tags":["seed_demo","github","project"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望后续项目开发过程中定期推送 GitHub。","tags":["seed_demo","github","workflow"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户使用 uv 管理 Python 项目的运行和依赖。","tags":["seed_demo","python","tooling"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户会用本地脚本手动运行 Sleep 来观察记忆整理结果。","tags":["seed_demo","sleep","testing"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户对 Ruff 和 mypy 的作用有学习需求，但更关心它们如何服务项目质量。","tags":["seed_demo","python","quality"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户更偏 Java 后端，对 Python 项目的工程化习惯需要通过项目逐步熟悉。","tags":["seed_demo","python","backend"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望 AI 在改代码时同步说明关键流程变化，帮助形成面试讲述素材。","tags":["seed_demo","communication","project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望文档中的 Architecture 和 Study Notes 面向自己阅读，其他文档主要服务 AI 续写。","tags":["seed_demo","documentation","workflow"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户不希望把自用控制台 UI 写进面试文档。","tags":["seed_demo","documentation","ui"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望 Architecture 文档对 demote 和 resolve 有完整解释，而不是跳过关键阶段。","tags":["seed_demo","documentation","architecture"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户认为文档应该能回答后续对项目细节的疑惑。","tags":["seed_demo","documentation","preference"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户喜欢在项目中保留施工记录，方便复盘每轮决策。","tags":["seed_demo","documentation","workflow"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户会要求 AI review 文档，清理过时信息和实际状态不符的内容。","tags":["seed_demo","documentation","quality"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望代码级别工作完成后继续做调优，而不是只满足能跑。","tags":["seed_demo","engineering","quality"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户喜欢踢足球，但最近一段时间踢得不多。","tags":["seed_demo","hobby","sports"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户过去有健身习惯，最近暂停了训练。","tags":["seed_demo","lifestyle","fitness"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户喜欢玩游戏，最近主要玩 CS2。","tags":["seed_demo","hobby","gaming"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户每周会玩 CS2，主要打箱子模式，不打高压竞技。","tags":["seed_demo","gaming","lifestyle"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户之前在 PS5 和 Nintendo Switch 上玩过较多单机游戏。","tags":["seed_demo","gaming","entertainment"],"confidence":3,"stability":"stage","salience":1}
-{"content":"用户最近游戏机不在身边，所以主要用电脑玩游戏。","tags":["seed_demo","gaming","context"],"confidence":3,"stability":"temporary","salience":1}
-{"content":"用户会刷 B 站和抖音作为长期放松方式。","tags":["seed_demo","entertainment","lifestyle"],"confidence":3,"stability":"long_term","salience":2}
-{"content":"用户喜欢麦当劳的现炸薯条。","tags":["seed_demo","preference","food"],"confidence":3,"stability":"long_term","salience":1}
-{"content":"用户对生活类记忆也感兴趣，不希望记忆系统只记录工作学习。","tags":["seed_demo","memory","lifestyle"],"confidence":3,"stability":"long_term","salience":2}
-{"content":"用户希望 Claude 能主动聊生活话题，从而自然触发记忆写入。","tags":["seed_demo","memory","conversation"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户不想在测试自主记忆时直接告诉 Claude 调用 Mneme 工具。","tags":["seed_demo","memory","testing"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望 AI 自己判断哪些生活偏好值得记住。","tags":["seed_demo","memory","preference"],"confidence":2,"stability":"long_term","salience":2}
-{"content":"用户希望记忆写入后最好能被明确告知，避免只能去数据库里检查。","tags":["seed_demo","memory","ux"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户担心 remember 调用结果在对话层丢失，后续希望补偿或确认机制。","tags":["seed_demo","memory","reliability"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户认为 confidence 如果绝大多数都是 3，就失去了区分度。","tags":["seed_demo","memory","signal"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户接受把 confidence 拆成 factual certainty，并用 salience 表达未来有用性。","tags":["seed_demo","memory","signal"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望已有记忆可以由模型重新判断 confidence 和 salience。","tags":["seed_demo","memory","maintenance"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户会通过 DataGrip 观察记忆记录的排序、字段和标签。","tags":["seed_demo","database","testing"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户注意到数据库 ID 顺序和页面排序可能不一致，会追问排序依据。","tags":["seed_demo","database","ui"],"confidence":2,"stability":"stage","salience":1}
-{"content":"用户希望控制台刷新时能看到数据库最新状态。","tags":["seed_demo","ui","database"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户希望控制台上的运行 Sleep 按钮能手动触发完整 Sleep 流程。","tags":["seed_demo","ui","sleep"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户认为批量创造测试数据比一轮轮对话更适合调试记忆系统。","tags":["seed_demo","testing","memory"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望批量测试数据仍然走 remember 链路，而不是直接插入 fact 表。","tags":["seed_demo","testing","memory"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户关心批量 remember 对 token 成本和 API 费用的影响。","tags":["seed_demo","cost","llm"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户更愿意先用几十到一百条数据观察系统行为，再考虑更大规模压测。","tags":["seed_demo","testing","workflow"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望测试数据写得像真实数据，而不是机械模板。","tags":["seed_demo","testing","data"],"confidence":3,"stability":"stage","salience":2}
-{"content":"用户在面试准备中会关注项目能否讲出可靠性、异步队列和失败恢复。","tags":["seed_demo","interview","reliability"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望项目讲述时能体现数据库事务和一致性设计。","tags":["seed_demo","interview","database"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望项目讲述时能体现 Agent 的长期记忆管理，而不是普通 CRUD。","tags":["seed_demo","interview","agent"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户会把 Mneme 的 Awake 和 Sleep 两阶段作为项目核心卖点之一。","tags":["seed_demo","interview","architecture"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望能解释为什么 Core 只由 Sleep 写，Awake 主要写 Archival。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望能解释为什么异步 remember 不影响 Claude Code 主响应速度。","tags":["seed_demo","interview","performance"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望能解释数据库队列相对 Kafka 或 Redis Stream 的取舍。","tags":["seed_demo","interview","queue"],"confidence":2,"stability":"stage","salience":3}
-{"content":"用户希望能解释 Sleep staging 表为什么存在，以及为什么看到 staging 表不一定是错误。","tags":["seed_demo","interview","database"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望能解释 ops log 记录的是 Sleep 执行过程，而不一定代表主表已经切换成功。","tags":["seed_demo","interview","sleep"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望能解释 promote 规则为什么不能把所有偏好都塞进 Core。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望能解释 habits、preference 和 lifestyle summary 之间的区别。","tags":["seed_demo","interview","memory"],"confidence":2,"stability":"stage","salience":2}
-{"content":"用户希望项目最终既能本地体验，又能在简历里讲清楚架构演进过程。","tags":["seed_demo","interview","project"],"confidence":3,"stability":"stage","salience":3}
-{"content":"用户希望 AI 不要在没有实际验证时声称功能完成。","tags":["seed_demo","engineering","testing"],"confidence":3,"stability":"long_term","salience":3}
-{"content":"用户希望遇到失败时直接说明失败原因和下一步处理，而不是绕开问题。","tags":["seed_demo","communication","debugging"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"模拟用户平时住在上海，工作日通勤时间大约四十分钟。","tags":["seed_demo","synthetic","location","commute"],"confidence":3,"stability":"stage","salience":2}
+{"content":"模拟用户喜欢早上喝一杯冰美式，但下午三点后通常不喝咖啡。","tags":["seed_demo","synthetic","food","routine"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户对牛奶轻微不耐受，点饮品时更常选择燕麦奶。","tags":["seed_demo","synthetic","food","health"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户不太能吃辣，川湘菜通常会要求少辣。","tags":["seed_demo","synthetic","food","preference"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户周末喜欢去安静的咖啡馆看书，不喜欢特别吵的商业街。","tags":["seed_demo","synthetic","lifestyle","weekend"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户最近在控制晚饭分量，希望晚上不要吃太油。","tags":["seed_demo","synthetic","health","temporary"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户偏好日式拉面里的清汤系，不太喜欢过重的豚骨汤底。","tags":["seed_demo","synthetic","food","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户每周会自己做两到三次饭，常做番茄炒蛋、鸡胸肉和意面。","tags":["seed_demo","synthetic","food","cooking"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户不喜欢香菜，点外卖时经常备注不要香菜。","tags":["seed_demo","synthetic","food","dislike"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户喜欢甜度较低的甜品，比如巴斯克蛋糕和低糖豆乳盒子。","tags":["seed_demo","synthetic","food","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户平时主要用 iPhone 和 MacBook，习惯在不同设备之间同步笔记。","tags":["seed_demo","synthetic","tooling","device"],"confidence":3,"stability":"stage","salience":2}
+{"content":"模拟用户的笔记工具主要是 Notion，临时想法会先记在手机备忘录里。","tags":["seed_demo","synthetic","tooling","notes"],"confidence":3,"stability":"stage","salience":2}
+{"content":"模拟用户喜欢用日历管理重要安排，但不会把每天排得很满。","tags":["seed_demo","synthetic","productivity","calendar"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户对任务管理工具很挑剔，不喜欢需要维护太多字段的系统。","tags":["seed_demo","synthetic","productivity","preference"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户买电子产品前会看大量评测，尤其关注续航、重量和售后。","tags":["seed_demo","synthetic","consumer","electronics"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户不喜欢频繁换手机，通常会用到电池明显衰减再更换。","tags":["seed_demo","synthetic","consumer","habit"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户倾向于买质量稳定的基础款衣服，不太追逐潮流款。","tags":["seed_demo","synthetic","consumer","fashion"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对家居收纳比较在意，桌面乱了会影响心情。","tags":["seed_demo","synthetic","home","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户正在考虑买一把人体工学椅，但还没有决定品牌。","tags":["seed_demo","synthetic","consumer","temporary"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户喜欢极简风格的桌面布置，偏好黑白灰和木色搭配。","tags":["seed_demo","synthetic","home","design"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户每周固定跑步两次，通常选择晚上七点以后。","tags":["seed_demo","synthetic","sports","routine"],"confidence":3,"stability":"stage","salience":2}
+{"content":"模拟用户跑步时更喜欢听播客，不太听节奏很快的音乐。","tags":["seed_demo","synthetic","sports","audio"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户膝盖曾经受过轻伤，所以不喜欢突然增加跑量。","tags":["seed_demo","synthetic","health","sports"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户喜欢羽毛球，但很难约到固定球友。","tags":["seed_demo","synthetic","sports","hobby"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户不喜欢高强度团课，更接受自己控制节奏的训练。","tags":["seed_demo","synthetic","sports","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户最近在尝试每天走八千步，但经常因为加班中断。","tags":["seed_demo","synthetic","health","temporary"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户睡眠质量容易受工作压力影响，压力大时入睡会变慢。","tags":["seed_demo","synthetic","health","sleep"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户不喜欢午睡太久，超过半小时醒来会觉得更累。","tags":["seed_demo","synthetic","health","sleep"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户每年体检都会关注血脂和肝功能指标。","tags":["seed_demo","synthetic","health","checkup"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户希望保持体重稳定，但不喜欢极端节食。","tags":["seed_demo","synthetic","health","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢悬疑类电影，但不喜欢过度血腥的惊悚片。","tags":["seed_demo","synthetic","entertainment","movie"],"confidence":3,"stability":"long_term","salience":1}
+{"content":"模拟用户看剧更喜欢一次看完短剧集，不喜欢追很长的连续剧。","tags":["seed_demo","synthetic","entertainment","series"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢听商业访谈和科技播客，通勤时经常播放。","tags":["seed_demo","synthetic","entertainment","podcast"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户不太喜欢直播带货，觉得信息密度低。","tags":["seed_demo","synthetic","entertainment","dislike"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户玩游戏偏向策略和经营类，不太喜欢纯反应速度游戏。","tags":["seed_demo","synthetic","gaming","preference"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户最近在玩《文明 VI》，喜欢慢慢规划城市和科技路线。","tags":["seed_demo","synthetic","gaming","temporary"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户玩游戏时更在意单局体验，不太追求排行榜排名。","tags":["seed_demo","synthetic","gaming","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢独立游戏里的叙事设计，比如带选择后果的剧情。","tags":["seed_demo","synthetic","gaming","story"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户会把游戏当作放松方式，但不希望它挤占睡眠时间。","tags":["seed_demo","synthetic","gaming","lifestyle"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户不喜欢需要大量每日打卡的手游。","tags":["seed_demo","synthetic","gaming","dislike"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢城市短途旅行，周末更愿意去高铁两小时内的地方。","tags":["seed_demo","synthetic","travel","preference"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户旅行时喜欢住交通方便的酒店，不太追求网红民宿。","tags":["seed_demo","synthetic","travel","lodging"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户旅行前会做一份轻量攻略，但不会把行程排得太紧。","tags":["seed_demo","synthetic","travel","planning"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户喜欢博物馆和城市漫步，对纯购物行程兴趣不大。","tags":["seed_demo","synthetic","travel","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户坐飞机时偏好靠走道座位，方便起身活动。","tags":["seed_demo","synthetic","travel","flight"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对海岛度假兴趣一般，更喜欢有城市文化和餐饮选择的目的地。","tags":["seed_demo","synthetic","travel","preference"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户近期想去杭州住一晚，主要想逛西湖和吃本地小馆。","tags":["seed_demo","synthetic","travel","temporary"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户旅行拍照主要用于记录，不太追求复杂修图。","tags":["seed_demo","synthetic","travel","photo"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户和朋友约饭时通常更愿意选安静、能聊天的店。","tags":["seed_demo","synthetic","social","food"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户不喜欢临时被安排太满，社交活动最好提前一天确认。","tags":["seed_demo","synthetic","social","planning"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户在人多的聚会里容易觉得累，更喜欢三四个人的小范围聊天。","tags":["seed_demo","synthetic","social","preference"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户表达感谢时偏实际行动，比如请咖啡或帮对方解决问题。","tags":["seed_demo","synthetic","social","personality"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户不太主动发朋友圈，但会偶尔记录旅行照片。","tags":["seed_demo","synthetic","social","habit"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户回复消息通常比较快，但忙起来会集中到晚上处理。","tags":["seed_demo","synthetic","social","communication"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户更喜欢一对一认真讨论问题，而不是在群聊里长篇争论。","tags":["seed_demo","synthetic","social","communication"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对生日和纪念日会设置提醒，避免忘记重要关系。","tags":["seed_demo","synthetic","social","calendar"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户工作时喜欢先列出待办清单，再开始处理复杂任务。","tags":["seed_demo","synthetic","work","productivity"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户上午专注力更好，适合处理需要深度思考的任务。","tags":["seed_demo","synthetic","work","routine"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户下午三点左右容易犯困，喜欢把机械性任务放到那个时间段。","tags":["seed_demo","synthetic","work","routine"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户开会前希望提前看到议程，否则容易觉得会议效率低。","tags":["seed_demo","synthetic","work","meeting"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户不喜欢没有 owner 和 deadline 的任务描述。","tags":["seed_demo","synthetic","work","preference"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户写文档时喜欢先写结论，再补背景和细节。","tags":["seed_demo","synthetic","work","writing"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户处理复杂问题时会先画流程图或状态图。","tags":["seed_demo","synthetic","work","reasoning"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户对需求变更比较敏感，希望先确认优先级再动手。","tags":["seed_demo","synthetic","work","planning"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户正在学习西班牙语，每周用应用练习三到四次。","tags":["seed_demo","synthetic","learning","language"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户记外语单词时更喜欢例句，不喜欢只背孤立词表。","tags":["seed_demo","synthetic","learning","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户想提高公开表达能力，但目前不太喜欢即兴演讲。","tags":["seed_demo","synthetic","learning","communication"],"confidence":1,"stability":"stage","salience":1}
+{"content":"模拟用户看技术书时会先扫目录，再决定是否精读。","tags":["seed_demo","synthetic","learning","reading"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢通过做小项目学习新工具，而不是只看教程。","tags":["seed_demo","synthetic","learning","project"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户学习数据分析时更关心如何解释图表，而不是只会写代码。","tags":["seed_demo","synthetic","learning","data"],"confidence":1,"stability":"stage","salience":1}
+{"content":"模拟用户每月会复盘一次个人开销，主要关注餐饮和交通支出。","tags":["seed_demo","synthetic","finance","habit"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户不喜欢冲动消费，超过五百元的非必需品通常会隔天再决定。","tags":["seed_demo","synthetic","finance","preference"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户会为旅行和电子产品单独做预算。","tags":["seed_demo","synthetic","finance","budget"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对基金和股票有基础兴趣，但不喜欢高频交易。","tags":["seed_demo","synthetic","finance","investment"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户更看重长期稳定储蓄，不喜欢把全部现金投入高风险资产。","tags":["seed_demo","synthetic","finance","risk"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户最近在减少外卖次数，希望每周至少带饭两次。","tags":["seed_demo","synthetic","finance","food"],"confidence":2,"stability":"temporary","salience":1}
+{"content":"模拟用户喜欢猫，但目前没有养宠物。","tags":["seed_demo","synthetic","pet","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对宠物咖啡馆有兴趣，但会在意卫生和气味。","tags":["seed_demo","synthetic","pet","lifestyle"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢植物，但经常忘记浇水。","tags":["seed_demo","synthetic","home","plant"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户家里适合养耐旱植物，比如虎皮兰或绿萝。","tags":["seed_demo","synthetic","home","plant"],"confidence":1,"stability":"stage","salience":1}
+{"content":"模拟用户喜欢自然光充足的房间，不喜欢长时间待在昏暗环境。","tags":["seed_demo","synthetic","home","preference"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对香薰味道比较挑剔，偏好木质或柑橘调。","tags":["seed_demo","synthetic","home","preference"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户希望 AI 推荐内容时先问清楚预算和时间限制。","tags":["seed_demo","synthetic","assistant","preference"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 给生活建议时不要像鸡汤，更偏好可执行的小步骤。","tags":["seed_demo","synthetic","assistant","preference"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 对不确定信息明确标注推测程度。","tags":["seed_demo","synthetic","assistant","trust"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"模拟用户不喜欢 AI 过度道歉，更希望直接修正问题。","tags":["seed_demo","synthetic","assistant","communication"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 在推荐餐厅时考虑距离、排队时间和噪音水平。","tags":["seed_demo","synthetic","assistant","recommendation"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 在安排旅行时保留弹性时间，不要生成赶场式行程。","tags":["seed_demo","synthetic","assistant","travel"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 在推荐运动计划时考虑膝盖旧伤和恢复节奏。","tags":["seed_demo","synthetic","assistant","health"],"confidence":3,"stability":"long_term","salience":2}
+{"content":"模拟用户希望 AI 记住阶段性目标，但在目标过期后主动降级或提醒确认。","tags":["seed_demo","synthetic","assistant","memory"],"confidence":2,"stability":"long_term","salience":3}
+{"content":"模拟用户希望 AI 区分长期偏好、阶段目标和临时上下文。","tags":["seed_demo","synthetic","assistant","memory"],"confidence":3,"stability":"long_term","salience":3}
+{"content":"模拟用户希望 AI 在复盘时能指出行为模式，而不是只罗列事实。","tags":["seed_demo","synthetic","assistant","reflection"],"confidence":2,"stability":"long_term","salience":2}
+{"content":"模拟用户喜欢周末逛独立书店，但通常只买一两本真正想读的书。","tags":["seed_demo","synthetic","hobby","reading"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户读小说偏好现实主义和悬疑题材，不太喜欢硬科幻。","tags":["seed_demo","synthetic","hobby","reading"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢拍城市街景，但不喜欢自拍。","tags":["seed_demo","synthetic","hobby","photo"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户对香水接受度一般，日常更喜欢干净、淡一点的气味。","tags":["seed_demo","synthetic","lifestyle","preference"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户和家人通话频率大约每周一次，通常在周末晚上。","tags":["seed_demo","synthetic","family","routine"],"confidence":2,"stability":"stage","salience":1}
+{"content":"模拟用户给长辈选礼物时更看重实用性，比如按摩仪或保暖用品。","tags":["seed_demo","synthetic","family","gift"],"confidence":1,"stability":"long_term","salience":1}
+{"content":"模拟用户在压力很大时会整理房间，通过恢复秩序感让自己放松。","tags":["seed_demo","synthetic","lifestyle","stress"],"confidence":2,"stability":"long_term","salience":1}
+{"content":"模拟用户喜欢雨天在家看电影，但不喜欢雨天出远门。","tags":["seed_demo","synthetic","lifestyle","weather"],"confidence":1,"stability":"long_term","salience":1}
