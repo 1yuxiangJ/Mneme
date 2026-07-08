@@ -43,6 +43,30 @@ def test_console_snapshot_api_returns_dashboard_payload(monkeypatch):
     assert response.json()["jobs"]["jobs"][0]["status"] == "succeeded"
 
 
+async def test_console_snapshot_loads_all_write_jobs(monkeypatch):
+    from mneme import console
+
+    seen: dict[str, object] = {}
+
+    async def fake_memory_snapshot(limit: int, include_deleted: bool) -> dict[str, object]:
+        seen["memory_limit"] = limit
+        seen["include_deleted"] = include_deleted
+        return {"counts": {}, "core_blocks": [], "archival_facts": [], "recent_ops": []}
+
+    async def fake_job_snapshot(limit: int | None = 20) -> dict[str, object]:
+        seen["job_limit"] = limit
+        return {"status": "ok", "limit": limit, "jobs": []}
+
+    monkeypatch.setattr(console, "collect_snapshot", fake_memory_snapshot)
+    monkeypatch.setattr(console, "collect_job_snapshot", fake_job_snapshot)
+
+    snapshot = await console.collect_console_snapshot()
+
+    assert snapshot["jobs"] == {"status": "ok", "limit": None, "jobs": []}
+    assert seen["memory_limit"] == 40
+    assert seen["job_limit"] is None
+
+
 def test_console_sleep_run_api_returns_cycle_summary(monkeypatch):
     from mneme import console
 

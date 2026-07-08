@@ -15,15 +15,14 @@ def _dt(value: object) -> str | None:
     return value.isoformat() if hasattr(value, "isoformat") else None
 
 
-async def snapshot(limit: int = 20) -> dict[str, Any]:
+async def snapshot(limit: int | None = 20) -> dict[str, Any]:
     session_maker = get_sessionmaker()
     async with session_maker() as session:
+        stmt = select(MemoryWriteJob).order_by(desc(MemoryWriteJob.id))
+        if limit is not None:
+            stmt = stmt.limit(limit)
         rows = (
-            await session.execute(
-                select(MemoryWriteJob)
-                .order_by(desc(MemoryWriteJob.id))
-                .limit(limit)
-            )
+            await session.execute(stmt)
         ).scalars()
         jobs = [
             {

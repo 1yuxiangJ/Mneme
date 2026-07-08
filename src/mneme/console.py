@@ -97,7 +97,7 @@ async def enqueue_bulk_memory_seed() -> dict[str, Any]:
 async def collect_console_snapshot() -> dict[str, Any]:
     """Collect dashboard data without invoking LLM-backed agents."""
     memory = await collect_snapshot(limit=40, include_deleted=False)
-    jobs = await collect_job_snapshot(limit=20)
+    jobs = await collect_job_snapshot(limit=None)
     return {
         "status": "ok",
         "generated_at": datetime.now(UTC).isoformat(),
