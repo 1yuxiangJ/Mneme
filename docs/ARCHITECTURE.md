@@ -463,7 +463,7 @@ COMMIT;
 
 → `state["plan"] = ["consolidate", "promote", "core_refresh", "reflect"]`
 
-后续每个 phase node 入口都 check `if "phase" not in state["plan"]: pass through`。
+后续 `consolidate / promote / demote / resolve / reflect` 仍按 plan 决定是否执行。`core_refresh` 是例外:运行时会强制把它补进 plan,因为计划阶段没有足够证据判断 Core 是否过时。它每轮都进入检查,但如果上次 checkpoint 后没有相关变化,会在调 LLM 前快速跳过。
 
 ---
 
@@ -684,27 +684,29 @@ archival 层不强求全局一致,因为它保留的是"用户曾经表达过什
 
 **做啥**:
 1. 读取 `core_blocks_staging`
-2. 读取 active archival 中按 `salience DESC, confidence DESC, use_count DESC, id DESC` 排序靠前的一批事实,作为当前支撑证据
-3. 读取最近 20 条 `memory_ops_log`
-4. 喂 LLM `CORE_REFRESH_PROMPT`,要求判断每个 core block 是 `REFRESH` 还是 `KEEP`
-5. 对 `REFRESH` 的 block 写入完整新 value,`version + 1`,`last_writer='sleep_agent'`
-6. 生成 `pending_ops(op_type='sleep_core_refresh')`
+2. 查询上一条 `sleep_core_refresh/__checkpoint__` 之后的相关 ops,并合并本轮尚未 swap 的 pending ops
+3. 如果 Core 为空,或已有 checkpoint 且没有相关变化,直接跳过 LLM
+4. active fact 数 `<= 200` 时,加载全部 active facts
+5. active fact 数 `> 200` 时,对每个非空 Core 做语义 Top 8,再合并上次 checkpoint 后变更的 facts 和全局高信号 Top 10,按 fact id 去重
+6. 喂 LLM `CORE_REFRESH_PROMPT`,要求判断每个 Core 是 `REFRESH` 还是 `KEEP`
+7. 只对 `REFRESH` 的 block 写入完整新 value,`version + 1`,`last_writer='sleep_agent'`
+8. 无论本轮是修改还是全部 `KEEP`,都生成一条 `target_id='__checkpoint__'` 的 pending op;只有最终 swap 成功才会写入主日志
 
 **为什么不只加载新增 fact?**
 
-新增 fact 只能帮助发现"被新事实覆盖"的过期内容,但不能判断 core 里的老内容是否仍然合理。比如 core 里有"用户喜欢麦当劳现炸薯条",这一轮没有任何新增 fact 提到薯条;如果只看新增 fact,LLM 无法判断这句话是仍然有效、已经过时,还是只是过细不该在 core。`core_refresh` 要维护的是 core 质量,所以需要一批 active archival 作为"当前仍有效的事实支撑"。
+新增 fact 只能帮助发现"被新事实覆盖"的过期内容,但不能判断 Core 里的老内容是否仍然合理。小数据时全量读取避免证据漏失;超过 200 条后,全局 Top-K 容易被单一主题占满,所以改为“每个 Core 分别找证据 + 保留全部增量变化 + 少量全局高信号”。
 
 三类输入的分工:
 
 | 输入 | 作用 |
 |---|---|
 | 当前 core | 被审查、可能被重写的对象 |
-| active archival | 当前仍有效的事实支撑,用于判断 core 内容是否有依据 |
-| recent ops log | 说明 core 内容是怎么来的、最近做过哪些维护动作 |
+| active archival evidence | `<=200` 时全量;`>200` 时按 Core 语义相关性、增量变化和全局高信号组合取证 |
+| ops since checkpoint | 说明上次成功检查后发生了什么,不再用容易被批量写入挤掉的“最新 20 条” |
 
 **为什么要看 ops log?**
 
-`memory_ops_log` 不是事实来源,而是变更历史。它能告诉 LLM 某段 core 内容是之前 promote 进来的、resolve 改过的,还是刚被 core_refresh 清理过。例如如果 recent ops 里有 `sleep_promote` 的 reason 写着"Specific food preference that may be referenced in future",LLM 就能判断这类内容更适合留在 archival,不适合常驻 core。它也能看到最近是否刚收紧过 promote 规则,避免把刚清掉的低显著细节又写回去。
+`memory_ops_log` 不是事实来源,而是变更索引。Refresh 通过 `__checkpoint__` 记住上次已审查到的 op id,下次只读之后的 remember / forget / consolidate / promote / demote / resolve / refresh 变化。本轮尚未写主日志的 pending ops 也会一起提供给 LLM。这既防止批量 remember 挤掉关键历史,也避免无变化时重复付费调用。
 
 **它会清什么**:
 - 已经过期的阶段性内容
@@ -809,6 +811,9 @@ COMMIT;
   "promote_count": 2,
   "demote_count": 0,
   "contradictions_count": 0,
+  "core_refresh_checked": true,
+  "core_refresh_evidence_mode": "all_active",
+  "core_refresh_candidate_count": 5,
   "core_refresh_count": 1,
   "reflection_preview": "User is a Java backend intern..."
 }
@@ -827,6 +832,8 @@ COMMIT;
 > **字段级合并**:snapshot 之后,Awake 可能继续对旧 fact 执行 recall / forget。swap 前按字段所有权合并:内容、标签、confidence、stability、salience 和 embedding 保留 Sleep 在 staging 的整理结果;`use_count` / `last_used_at` 保留 Awake 在主表的最新访问统计;`is_deleted` 对两边做 OR,避免 Sleep demote 或 Awake forget 后 fact 在 swap 中复活。合并前的 `SHARE ROW EXCLUSIVE` 锁会阻止新写入插入合并与 RENAME 之间的窗口,但不阻塞普通 SELECT。
 
 > **pending_ops**:Sleep phase 对 staging 的每次修改都会生成一条日志草稿,暂存在 LangGraph state 里。只有 `atomic_swap` 成功时,这些草稿才会在同一个 transaction 内写入主 `memory_ops_log`。如果 swap 失败,主表不变,日志也不写,避免出现"日志说生效但主表没更新"的审计歧义。
+
+> **core refresh checkpoint**:`sleep_core_refresh` 中 `target_id='__checkpoint__'` 的特殊审计记录,表示此前相关变化已被 Refresh 检查。它也是 pending op,所以只有 Core 修改和最终 swap 成功后才能推进游标;全部 `KEEP` 也会记 checkpoint,但没有相关变化时不会重复记录。
 
 > **promote_candidate_count vs promote_count**:`promote_candidate_count` 是本轮 promote 阶段交给模型评估并返回判断的数量,里面可能包含 `SKIP`;`promote_count` 只统计真正 `decision = PROMOTE`、会改写 core 并生成 `sleep_promote` pending op 的数量。看 Sleep 是否真的改了 core,以 `promote_count` 和 `memory_ops_log.sleep_promote` 为准。
 

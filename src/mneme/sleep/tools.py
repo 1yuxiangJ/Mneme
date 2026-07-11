@@ -19,9 +19,20 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mneme.llm.client import embed_text
 from mneme.memory.store import Actor, MemoryOpDraft
 
 SLEEP_ACTOR: Actor = "sleep_agent"
+CORE_REFRESH_CHECKPOINT_TARGET = "__checkpoint__"
+_CORE_REFRESH_RELEVANT_OPS = (
+    "remember",
+    "forget",
+    "sleep_consolidate",
+    "sleep_promote",
+    "sleep_demote",
+    "sleep_resolve",
+    "sleep_core_refresh",
+)
 
 
 def _vector_literal(value: Any) -> str:
@@ -233,62 +244,210 @@ async def get_stale_candidates(
 
 async def get_core_refresh_context(
     session: AsyncSession,
-    archival_limit: int = 30,
-    ops_limit: int = 20,
+    current_cycle_ops: list[MemoryOpDraft] | None = None,
+    all_facts_threshold: int = 200,
+    per_block_limit: int = 8,
+    high_signal_limit: int = 10,
 ) -> dict[str, Any]:
-    """Load staging core + supporting evidence for core refresh."""
+    """Load incremental, block-aware evidence for core refresh.
+
+    Small memories are loaded in full. Above the threshold, evidence is the
+    union of facts changed since the last successful refresh check, semantic
+    top-K matches for every non-empty core block, and global high-signal facts.
+    """
     core_rows = (await session.execute(text(
         "SELECT label, value, version, char_limit "
         "FROM core_blocks_staging ORDER BY label"
     ))).all()
-    archival_rows = (await session.execute(text(
-        "SELECT id, content, tags, confidence, stability, salience, use_count, "
-        "last_used_at, created_at "
-        "FROM archival_facts_staging "
-        "WHERE is_deleted = FALSE "
-        "ORDER BY salience DESC, confidence DESC, use_count DESC, id DESC "
-        "LIMIT :lim"
-    ), {"lim": archival_limit})).all()
+    core_blocks = [
+        {
+            "label": r.label,
+            "value": r.value,
+            "version": r.version,
+            "char_limit": r.char_limit,
+        }
+        for r in core_rows
+    ]
+    non_empty_cores = [
+        block for block in core_blocks if (block.get("value") or "").strip()
+    ]
+
+    active_count = int((await session.execute(text(
+        "SELECT count(*) FROM archival_facts_staging WHERE is_deleted = FALSE"
+    ))).scalar_one())
+    checkpoint_id = (await session.execute(text(
+        "SELECT max(id) FROM memory_ops_log "
+        "WHERE op_type = 'sleep_core_refresh' AND target_id = :target"
+    ), {"target": CORE_REFRESH_CHECKPOINT_TARGET})).scalar_one()
+    checkpoint_value = int(checkpoint_id) if checkpoint_id is not None else None
+
     op_rows = (await session.execute(text(
-        "SELECT op_type, actor, target_kind, target_id, reason, ts "
-        "FROM memory_ops_log ORDER BY ts DESC, id DESC LIMIT :lim"
-    ), {"lim": ops_limit})).all()
+        "SELECT id, op_type, actor, target_kind, target_id, reason, ts "
+        "FROM memory_ops_log "
+        "WHERE id > :checkpoint "
+        "AND op_type = ANY(:op_types) "
+        "AND NOT (op_type = 'sleep_core_refresh' AND target_id = :target) "
+        "ORDER BY id ASC"
+    ), {
+        "checkpoint": checkpoint_value or 0,
+        "op_types": list(_CORE_REFRESH_RELEVANT_OPS),
+        "target": CORE_REFRESH_CHECKPOINT_TARGET,
+    })).all()
+
+    pending_relevant = [
+        op for op in current_cycle_ops or []
+        if op.get("op_type") in _CORE_REFRESH_RELEVANT_OPS
+        and op.get("target_id") != CORE_REFRESH_CHECKPOINT_TARGET
+    ]
+    ops_since_refresh = [
+        {
+            "id": r.id,
+            "op_type": r.op_type,
+            "actor": r.actor,
+            "target_kind": r.target_kind,
+            "target_id": r.target_id,
+            "reason": r.reason,
+            "ts": r.ts.isoformat() if r.ts else None,
+            "source": "committed",
+        }
+        for r in op_rows
+    ]
+    ops_since_refresh.extend(
+        {
+            "id": None,
+            "op_type": op.get("op_type"),
+            "actor": op.get("actor"),
+            "target_kind": op.get("target_kind"),
+            "target_id": op.get("target_id"),
+            "reason": op.get("reason"),
+            "ts": None,
+            "source": "current_cycle_pending",
+        }
+        for op in pending_relevant
+    )
+
+    if not non_empty_cores:
+        return {
+            "refresh_required": False,
+            "skip_reason": "no_non_empty_core",
+            "evidence_mode": "none",
+            "checkpoint_op_id": checkpoint_value,
+            "active_archival_count": active_count,
+            "core_blocks": core_blocks,
+            "supporting_archival": [],
+            "ops_since_last_refresh": ops_since_refresh,
+        }
+
+    first_check = checkpoint_value is None
+    if not first_check and not ops_since_refresh:
+        return {
+            "refresh_required": False,
+            "skip_reason": "no_relevant_changes_since_checkpoint",
+            "evidence_mode": "none",
+            "checkpoint_op_id": checkpoint_value,
+            "active_archival_count": active_count,
+            "core_blocks": core_blocks,
+            "supporting_archival": [],
+            "ops_since_last_refresh": [],
+        }
+
+    facts_by_id: dict[int, dict[str, Any]] = {}
+    changed_ids = {
+        int(op["target_id"])
+        for op in ops_since_refresh
+        if op.get("target_kind") == "archival"
+        and str(op.get("target_id") or "").isdigit()
+    }
+
+    def add_fact(row: Any, reason: str, distance: float | None = None) -> None:
+        fact = facts_by_id.setdefault(row.id, _refresh_fact_to_dict(row))
+        reasons = fact.setdefault("evidence_reasons", [])
+        if reason not in reasons:
+            reasons.append(reason)
+        if distance is not None:
+            distances = fact.setdefault("semantic_distances", {})
+            distances[reason.removeprefix("semantic:")] = distance
+
+    if active_count <= all_facts_threshold:
+        evidence_mode = "all_active"
+        archival_rows = (await session.execute(text(
+            "SELECT id, content, tags, confidence, stability, salience, use_count, "
+            "last_used_at, created_at, is_deleted "
+            "FROM archival_facts_staging WHERE is_deleted = FALSE ORDER BY id ASC"
+        ))).all()
+        for row in archival_rows:
+            add_fact(row, "all_active")
+    else:
+        evidence_mode = "adaptive"
+        high_signal_rows = (await session.execute(text(
+            "SELECT id, content, tags, confidence, stability, salience, use_count, "
+            "last_used_at, created_at, is_deleted "
+            "FROM archival_facts_staging "
+            "WHERE is_deleted = FALSE AND confidence = 3 "
+            "AND stability = 'long_term' AND salience = 3 "
+            "ORDER BY use_count DESC, id DESC LIMIT :lim"
+        ), {"lim": high_signal_limit})).all()
+        for row in high_signal_rows:
+            add_fact(row, "global_high_signal")
+
+        for block in non_empty_cores:
+            vector = await embed_text(
+                f"Core block {block['label']}: {block['value']}"
+            )
+            semantic_rows = (await session.execute(text(
+                "SELECT id, content, tags, confidence, stability, salience, "
+                "use_count, last_used_at, created_at, is_deleted, "
+                "embedding <=> CAST(:embedding AS vector) AS distance "
+                "FROM archival_facts_staging "
+                "WHERE is_deleted = FALSE AND embedding IS NOT NULL "
+                "ORDER BY distance LIMIT :lim"
+            ), {
+                "embedding": _vector_literal(vector),
+                "lim": per_block_limit,
+            })).all()
+            for row in semantic_rows:
+                add_fact(
+                    row,
+                    f"semantic:{block['label']}",
+                    float(row.distance),
+                )
+
+    # Current-cycle Awake writes can commit after the snapshot. Such rows are
+    # absent or stale in staging until atomic_swap(), so read both versions now.
+    # This prevents advancing the refresh checkpoint past unseen changes.
+    if changed_ids:
+        changed_staging_rows = (await session.execute(text(
+            "SELECT id, content, tags, confidence, stability, salience, use_count, "
+            "last_used_at, created_at, is_deleted "
+            "FROM archival_facts_staging WHERE id = ANY(:ids)"
+        ), {"ids": sorted(changed_ids)})).all()
+        for row in changed_staging_rows:
+            add_fact(row, "changed_since_refresh")
+
+        changed_main_rows = (await session.execute(text(
+            "SELECT id, content, tags, confidence, stability, salience, use_count, "
+            "last_used_at, created_at, is_deleted "
+            "FROM archival_facts WHERE id = ANY(:ids)"
+        ), {"ids": sorted(changed_ids)})).all()
+        for row in changed_main_rows:
+            add_fact(row, "changed_since_refresh")
+            fact = facts_by_id[row.id]
+            fact["use_count"] = max(int(fact["use_count"]), int(row.use_count))
+            fact["last_used_at"] = _latest_iso_datetime(
+                fact.get("last_used_at"),
+                row.last_used_at.isoformat() if row.last_used_at else None,
+            )
+            fact["is_deleted"] = bool(fact["is_deleted"] or row.is_deleted)
 
     return {
-        "core_blocks": [
-            {
-                "label": r.label,
-                "value": r.value,
-                "version": r.version,
-                "char_limit": r.char_limit,
-            }
-            for r in core_rows
-        ],
-        "supporting_archival": [
-            {
-                "id": r.id,
-                "content": r.content,
-                "tags": list(r.tags or []),
-                "confidence": r.confidence,
-                "stability": r.stability,
-                "salience": r.salience,
-                "use_count": r.use_count,
-                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in archival_rows
-        ],
-        "recent_ops": [
-            {
-                "op_type": r.op_type,
-                "actor": r.actor,
-                "target_kind": r.target_kind,
-                "target_id": r.target_id,
-                "reason": r.reason,
-                "ts": r.ts.isoformat() if r.ts else None,
-            }
-            for r in op_rows
-        ],
+        "refresh_required": True,
+        "skip_reason": None,
+        "evidence_mode": evidence_mode,
+        "checkpoint_op_id": checkpoint_value,
+        "active_archival_count": active_count,
+        "core_blocks": core_blocks,
+        "supporting_archival": list(facts_by_id.values()),
+        "ops_since_last_refresh": ops_since_refresh,
     }
 
 
@@ -498,6 +657,32 @@ def draft_reflection_log(text_value: str) -> MemoryOpDraft:
     }
 
 
+def draft_core_refresh_checkpoint(
+    context: dict[str, Any],
+    actions: list[dict[str, Any]],
+) -> MemoryOpDraft:
+    """Mark the evidence cursor only after the enclosing swap commits."""
+    refreshed = sum(
+        1 for action in actions if action.get("decision") == "REFRESH"
+    )
+    return {
+        "op_type": "sleep_core_refresh",
+        "actor": SLEEP_ACTOR,
+        "target_kind": "core",
+        "target_id": CORE_REFRESH_CHECKPOINT_TARGET,
+        "before_value": None,
+        "after_value": None,
+        "reason": (
+            "Core refresh check completed; "
+            f"mode={context.get('evidence_mode')}; "
+            f"active_facts={context.get('active_archival_count', 0)}; "
+            f"evidence_facts={len(context.get('supporting_archival', []))}; "
+            f"changed_ops={len(context.get('ops_since_last_refresh', []))}; "
+            f"refreshed_blocks={refreshed}"
+        ),
+    }
+
+
 # =====================================================================
 # helpers
 # =====================================================================
@@ -513,3 +698,26 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "salience": r.salience,
         "distance": 0.0,
     }
+
+
+def _refresh_fact_to_dict(row: Any) -> dict[str, Any]:
+    return {
+        "id": row.id,
+        "content": row.content,
+        "tags": list(row.tags or []),
+        "confidence": row.confidence,
+        "stability": row.stability,
+        "salience": row.salience,
+        "use_count": row.use_count,
+        "last_used_at": row.last_used_at.isoformat() if row.last_used_at else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "is_deleted": row.is_deleted,
+    }
+
+
+def _latest_iso_datetime(first: str | None, second: str | None) -> str | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return max(datetime.fromisoformat(first), datetime.fromisoformat(second)).isoformat()

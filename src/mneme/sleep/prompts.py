@@ -33,7 +33,7 @@ Phases available:
 2. promote    — lift frequent, explicit, durable, useful archival into core blocks
 3. demote     — soft-delete archival that's stale and low-signal
 4. resolve    — detect & fix contradictions within core blocks
-5. core_refresh — remove stale / over-specific / unsupported core content
+5. core_refresh — mandatory maintenance check; the runtime adds it even when omitted
 6. reflect    — write a one-paragraph "about the user" snapshot to ops log
 
 Output strictly this JSON (no commentary):
@@ -45,9 +45,8 @@ Output strictly this JSON (no commentary):
 Constraints:
 - If archival_count < {min_archival}: skip everything except reflect.
 - If no archival created since last cycle: skip consolidate.
-- Include core_refresh when core blocks contain non-empty content and recent
-  ops or supporting archival suggest the core may now be stale, over-specific,
-  or unsupported.
+- Always include core_refresh. It cheaply skips its LLM call when no relevant
+  memory changes have occurred since its last successful checkpoint.
 - Always include reflect at the end of a productive cycle (it's cheap, gives
   the human something to inspect).
 """
@@ -223,6 +222,15 @@ miscellaneous facts.
 
 Core refresh context:
 {core_refresh_context_json}
+
+Evidence metadata explains how facts were selected:
+- evidence_mode=all_active: every active fact is present (small memory).
+- evidence_mode=adaptive: evidence is deduplicated from per-core semantic
+  matches, facts changed since the last refresh checkpoint, and global
+  high-signal facts.
+- evidence_reasons and semantic_distances show why each fact was included.
+- ops_since_last_refresh contains committed changes after the prior checkpoint
+  plus current-cycle changes that will commit with this Sleep swap.
 
 Decide for each non-empty core block whether it should be refreshed.
 

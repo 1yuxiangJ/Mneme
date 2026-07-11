@@ -53,6 +53,9 @@ class SleepState(TypedDict, total=False):
     demote_actions: list[Any]
     contradictions: list[Any]
     core_refresh_actions: list[Any]
+    core_refresh_checked: bool
+    core_refresh_evidence_mode: str
+    core_refresh_skip_reason: str | None
     reflection_text: str
     pending_ops: list[MemoryOpDraft]
     aborted: bool
@@ -160,6 +163,11 @@ async def node_plan(state: SleepState) -> SleepState:
     )
     decision = await _llm_json(rendered)
     phases = decision.get("phases", ["reflect"])
+    if "core_refresh" not in phases:
+        if "reflect" in phases:
+            phases.insert(phases.index("reflect"), "core_refresh")
+        else:
+            phases.append("core_refresh")
     logger.info("plan: phases=%s reason=%s", phases, decision.get("reason"))
     return {**state, "plan": phases}
 
@@ -282,30 +290,48 @@ async def node_resolve(state: SleepState) -> SleepState:
 
 
 async def node_core_refresh(state: SleepState) -> SleepState:
-    if (
-        state.get("aborted")
-        or "core_refresh" not in state.get("plan", [])
-        or not _budget_ok(state)
-    ):
+    if state.get("aborted") or not _budget_ok(state):
         return state
     session_maker = get_sessionmaker()
     async with session_maker() as session:
-        context = await tools.get_core_refresh_context(session)
-        if not any(
-            (block.get("value") or "").strip()
-            for block in context["core_blocks"]
-        ):
-            logger.info("core_refresh: no non-empty core blocks")
-            return {**state, "core_refresh_actions": []}
+        context = await tools.get_core_refresh_context(
+            session,
+            current_cycle_ops=state.get("pending_ops", []),
+            all_facts_threshold=settings.core_refresh_all_facts_threshold,
+            per_block_limit=settings.core_refresh_per_block_limit,
+            high_signal_limit=settings.core_refresh_high_signal_limit,
+        )
+        evidence_mode = str(context.get("evidence_mode", "none"))
+        if not context.get("refresh_required"):
+            skip_reason = str(context.get("skip_reason") or "not_required")
+            logger.info("core_refresh: skipped (%s)", skip_reason)
+            return {
+                **state,
+                "core_refresh_actions": [],
+                "core_refresh_checked": True,
+                "core_refresh_evidence_mode": evidence_mode,
+                "core_refresh_skip_reason": skip_reason,
+            }
         rendered = prompts.CORE_REFRESH_PROMPT.format(
             core_refresh_context_json=json.dumps(context, indent=2, default=str),
         )
         decision = await _llm_json(rendered)
+        if "_parse_error" in decision:
+            raise RuntimeError("core_refresh returned invalid JSON")
         actions = decision.get("actions", [])
+        if not isinstance(actions, list):
+            raise RuntimeError("core_refresh actions must be a list")
         pending_ops = await tools.apply_core_refreshes(session, actions)
+        pending_ops.append(tools.draft_core_refresh_checkpoint(context, actions))
     logger.info("core_refresh: %d actions", len(actions))
     return _append_pending_ops(
-        {**state, "core_refresh_actions": actions},
+        {
+            **state,
+            "core_refresh_actions": actions,
+            "core_refresh_checked": True,
+            "core_refresh_evidence_mode": evidence_mode,
+            "core_refresh_skip_reason": None,
+        },
         pending_ops,
     )
 
@@ -453,6 +479,16 @@ async def run_sleep_cycle() -> dict[str, Any]:
         "promote_count": _count_decision(promote_actions, "PROMOTE"),
         "demote_count": len(final_state.get("demote_actions") or []),
         "contradictions_count": len(final_state.get("contradictions") or []),
-        "core_refresh_count": len(final_state.get("core_refresh_actions") or []),
+        "core_refresh_checked": final_state.get("core_refresh_checked", False),
+        "core_refresh_evidence_mode": final_state.get(
+            "core_refresh_evidence_mode", "none"
+        ),
+        "core_refresh_skip_reason": final_state.get("core_refresh_skip_reason"),
+        "core_refresh_candidate_count": len(
+            final_state.get("core_refresh_actions") or []
+        ),
+        "core_refresh_count": _count_decision(
+            final_state.get("core_refresh_actions"), "REFRESH"
+        ),
         "reflection_preview": (final_state.get("reflection_text") or "")[:200],
     }

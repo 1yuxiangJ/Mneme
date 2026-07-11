@@ -34,3 +34,6 @@ def test_sleep_defaults(monkeypatch):
     assert mneme.config.settings.sleep_max_wall_time_seconds == 300
     assert mneme.config.settings.sleep_min_archival_count == 10
     assert mneme.config.settings.sleep_scheduler_enabled is False
+    assert mneme.config.settings.core_refresh_all_facts_threshold == 200
+    assert mneme.config.settings.core_refresh_per_block_limit == 8
+    assert mneme.config.settings.core_refresh_high_signal_limit == 10

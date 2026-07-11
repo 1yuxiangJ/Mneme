@@ -18,7 +18,12 @@ class _FakeGraph:
             ],
             "demote_actions": [],
             "contradictions": [],
-            "core_refresh_actions": [],
+            "core_refresh_actions": [
+                {"decision": "REFRESH", "block": "preferences"},
+                {"decision": "KEEP", "block": "habits"},
+            ],
+            "core_refresh_checked": True,
+            "core_refresh_evidence_mode": "all_active",
             "reflection_text": "user prefers concrete answers",
         }
 
@@ -33,3 +38,6 @@ async def test_sleep_summary_separates_promote_candidates_from_applied(
 
     assert summary["promote_candidate_count"] == 3
     assert summary["promote_count"] == 1
+    assert summary["core_refresh_checked"] is True
+    assert summary["core_refresh_candidate_count"] == 2
+    assert summary["core_refresh_count"] == 1

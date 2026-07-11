@@ -1,5 +1,7 @@
 # 2026-07-05 Day 27 - Core Refresh Phase
 
+> 历史记录:Day 27 是 Core Refresh 首次实现时的设计。Day 32 已把“Plan 可选 + active top-K + 最新 ops”升级为“每轮检查 + checkpoint 增量 ops + 自适应分块证据”,当前状态见 `2026-07-11-day-32-core-refresh-evidence.md`。
+
 ## 背景
 
 用户指出一个架构缺口:

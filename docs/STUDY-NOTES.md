@@ -304,7 +304,7 @@ Anthropic *Building Effective Agents*(2024-12)分三层:
 | **Agentic Workflow** | **流程框架人写死,节点内 LLM 决策** | 我们的 **Sleep** |
 | **Agent** | **流程也是 LLM 决策**(动态选下一步) | 我们的 **Awake** |
 
-Sleep 每个 node 都调 LLM 做实质决策(plan / consolidate / promote / demote / resolve / core_refresh / reflect),所以**不是哑工作流**。但**节点之间流向写死**——所以也不是 pure agent。**两个特征加起来 = agentic workflow**。
+Sleep 的实质阶段由 LLM 做决策(plan / consolidate / promote / demote / resolve / core_refresh / reflect),所以**不是哑工作流**。其中 `core_refresh` 每轮先做确定性变更检查,无变化时不调 LLM;有变化时才让 LLM 判断 `REFRESH / KEEP`。**节点之间流向写死**,所以它仍是 agentic workflow,不是 pure agent。
 
 **这不是退化,是正确选择**:
 1. Sleep 9 阶段有严格状态依赖(snapshot 必须先、swap 必须后),让 LLM 自由调度有数据损坏风险
@@ -313,7 +313,7 @@ Sleep 每个 node 都调 LLM 做实质决策(plan / consolidate / promote / demo
 
 面试如果被追问:
 
-> "Sleep 严格说是 agentic workflow——节点流向写死,每个节点 LLM 做实质决策(plan / consolidate / promote / demote / resolve / core_refresh / reflect 都是 LLM 输出 JSON action,代码 apply)。这是主动选择不是技术不足:Sleep 9 阶段有严格状态依赖,让 LLM 自由调度有数据损坏风险。Letta paper 的 sleep-time consolidation 也是结构化 pipeline。Awake 是 pure ReAct agent——MCP 请求进来后 LLM 自由决定调哪些 tool / 几次 / 什么时候结束。两种模式各用在对的地方:Awake 需要 flexibility,Sleep 需要 predictability。"
+> "Sleep 严格说是 agentic workflow——节点流向写死,但进入有证据的实质阶段后,LLM 输出 JSON action,代码只负责验证和 apply。`core_refresh` 还会先用 checkpoint 判断有没有新变化,没有就不浪费模型调用。这是主动选择不是技术不足:Sleep 9 阶段有严格状态依赖,让 LLM 自由调度有数据损坏风险。Awake 则是 pure ReAct agent。"
 
 简历措辞:`"Awake is a pure ReAct agent, Sleep is an agentic workflow orchestrating idle-time memory consolidation."`
 
@@ -2638,16 +2638,23 @@ sleep/agent.py: run_sleep_cycle()
     ▼
 
 [⑦ node_core_refresh]
-    │ context = await tools.get_core_refresh_context(session)
+    │ 运行时强制每轮进入,不依赖 Plan 是否选中
+    │ context = await tools.get_core_refresh_context(session, current_cycle_ops=...)
+    │   ├─ 查最新 sleep_core_refresh/__checkpoint__
+    │   ├─ 无非空 Core 或 checkpoint 后无相关变化 → 不调 LLM,直接跳过
+    │   ├─ active <= 200 → 加载全部 active facts
+    │   └─ active > 200 → 每 Core 语义 Top 8 + 增量 facts + 高信号 Top 10,去重
     │ rendered = CORE_REFRESH_PROMPT.format(core_refresh_context_json=...)
-    │ decision = await _llm_json(rendered)  ──→ DeepSeek API call #6
+    │ decision = await _llm_json(rendered)  ──→ 有变化时才调 DeepSeek
     │   返回 {"actions": [{"block":"preferences", "decision":"REFRESH", "new_block_value":"...", "reason":"..."}]} 或 KEEP
     │ await tools.apply_core_refreshes(session, actions)
     │   ├─ UPDATE core_blocks_staging SET value=:v WHERE label=:block
     │   ├─ return MemoryOpDraft(op_type='sleep_core_refresh', ...)
     │   └─ COMMIT staging 修改
+    │ state["pending_ops"] += sleep_core_refresh/__checkpoint__
+    │   └─ 只有 swap 成功才 flush,不会跳过未生效变更
     │ state["pending_ops"] += returned drafts
-    │ 耗时: ~2-5 秒
+    │ 耗时:无变化时只查 DB;有变化时 ~2-5 秒
     ▼
 
 [⑧ node_reflect]
@@ -2661,15 +2668,15 @@ sleep/agent.py: run_sleep_cycle()
     │ 耗时: ~2-4 秒
     ▼
 
-core_refresh 的输入不是"只看新增 fact"。它读取三类上下文:
+core_refresh 的输入不是"只看新增 fact",也不再是"全局排序 Top 30 + 最新 20 条 log"。Day 32 改为三类上下文:
 
 | 输入 | 作用 |
 |---|---|
 | 当前 core_blocks_staging | 被审查、可能被重写的对象 |
-| active archival top-K | 当前仍有效的事实支撑,按 salience / confidence / use_count 排序 |
-| recent memory_ops_log | 说明 core 内容是怎么来的、最近做过哪些维护动作 |
+| active archival evidence | `<=200` 加载全部;`>200` 时为每个 Core 取语义 Top 8,加上全部增量 fact 和高信号 Top 10 |
+| ops since checkpoint | 读取上次成功 Refresh 检查后的相关变化,再合并本轮 pending ops |
 
-只看新增 fact 只能发现"新事实覆盖旧事实",不能发现"core 里有过细内容但近期没有新事实提到它"。例如 core 里有"用户喜欢麦当劳现炸薯条",这一轮没有新增薯条相关 fact;只看新增 fact 时,LLM 不知道它是否仍有效、是否过细、是否应该保留。active archival 让 LLM 判断 core 内容是否仍有事实支撑,recent ops log 让 LLM 看到这段内容当初是 promote 进来的还是刚被 refresh 清理过,避免反复写回低显著细节。
+只看新增 fact 会漏掉 Core 里本来就过细的内容;只取全局 Top 30 又可能被职业或兴趣某一个主题占满,让其他 Core 没有证据。小库全量、大库按 Core 分别检索,才能同时兼顾不漏和上下文上限。`__checkpoint__` 则把 ops_log 从"最新摘要" 变成"增量变更游标"。
 
 [⑨ node_swap]
     │ if aborted: cleanup_staging + return
@@ -2701,8 +2708,8 @@ scheduler.py: _cycle_running = False
 
 | 类型 | 次数 | 在哪 |
 |---|---|---|
-| **LLM 调用** | **7 次** | plan / consolidate / promote / demote / resolve / core_refresh / reflect 各 1 次 |
-| **Embedding** | **0 次** | Sleep 不算 embedding(只读 staging 里现成的 embedding;但 consolidation 用了 pgvector `<=>` 算距离,**不调外部 API**) |
+| **LLM 调用** | **最多 7 次** | plan / consolidate / promote / demote / resolve / core_refresh / reflect;Refresh 无变化时省 1 次,其他受 Plan 跳过 |
+| **Embedding** | **0-5 次** | `<=200` 全量模式不调;`>200` 自适应模式对每个非空 Core 各算 1 次 query embedding |
 | **DB COMMIT** | **~10 次** | snapshot 1 + 每个 apply_xxx 1 + reflect 1 + swap 1 + N 个 consolidate / promote / demote 子 commit |
 | **DB query 总数** | **50-200 个** | 取决于 archival 数量(consolidate O(N²)+其他 phase 各几个) |
 
@@ -2716,14 +2723,14 @@ scheduler.py: _cycle_running = False
 | ④ promote | 2-5 秒 |
 | ⑤ demote | 2-5 秒 |
 | ⑥ resolve | 2-5 秒 |
-| ⑦ core_refresh | 2-5 秒 |
+| ⑦ core_refresh | 无变化时只查 DB;有变化时 2-5 秒 |
 | ⑧ reflect | 2-4 秒 |
 | ⑨ swap | 50-200 ms |
 | **总计** | **~15-30 秒**(MVP 数据量),最差 5 分钟(budget) |
 
 ### Token 成本
 
-6 次 LLM 调用,每次 input ~2-4K(prompt + 数据),output ~200-1000(JSON / 段落):
+实际 LLM 调用数由 Plan 和 Refresh checkpoint 决定,满载上限为 7 次;每次 input ~2-4K(prompt + 数据),output ~200-1000(JSON / 段落):
 - 总 input ~15-25K tok
 - 总 output ~2-5K tok
 - DeepSeek 成本 ≈ **$0.004 - 0.008 一次 cycle**
@@ -2780,7 +2787,7 @@ except Exception as exc:
 - promote:1(或 N=candidate 数)
 - demote:1
 - resolve:1
-- core_refresh:1
+- core_refresh:0 或 1(每轮检查,无相关变化时不调 LLM)
 - reflect:1
 - swap:0
 
@@ -3980,6 +3987,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 12 | **resolve 独立 op_type** | Day 14 已做:resolve 生成 `sleep_resolve`;Day 15 改为 pending op,swap 成功后写入主日志 | 后续可在 inspect 输出里单独分组展示 | §4.3 |
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
 | 14 | **Awake ReAct 卡死防护** | Day 14 已做:`recursion_limit=8` + LLM `timeout=20,max_retries=1` + 整体 `wait_for=45s` + 写类异步 | 后续可加 p99 latency 监控和 step_count 接近 limit 告警 | §5.2 讨论(Awake ReAct 风险) |
+| 15 | **Core Refresh 证据加载** | Day 32 已做:每轮检查 + 成功 checkpoint;`<=200` 全量 fact,`>200` 每 Core Top 8 + 增量 facts + 高信号 Top 10;ops 读 checkpoint 之后而非固定最新 20 条 | 后续当单个 Core 变成多段长文时,可再拆成 claim-level retrieval,避免整段 embedding 稀释多主题 | §6.1 / Day 32 |
 
 **面试一句话**:"这项目我维护了一个优化 backlog,十几项,从 embedding 复用、写异步读同步,到 swap 字段级合并、大数据量改 MVCC 快照——已经落地的会记录验证结果,暂缓的会记录改法和触发条件,而不是把所有生产化能力一次堆进 MVP。"
 

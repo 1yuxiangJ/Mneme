@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     sleep_max_tokens: int = 50000
     sleep_min_archival_count: int = 10
     sleep_swap_lock_timeout_ms: int = 500
+    core_refresh_all_facts_threshold: int = 200
+    core_refresh_per_block_limit: int = 8
+    core_refresh_high_signal_limit: int = 10
 
     # ----- Awake agent guardrails -----
     awake_react_recursion_limit: int = 8

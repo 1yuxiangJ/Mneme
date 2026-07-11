@@ -9,8 +9,13 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
+from mneme.sleep import tools as sleep_tools
 from mneme.sleep.staging import atomic_swap, cleanup_staging, snapshot_to_staging
-from mneme.sleep.tools import find_consolidation_clusters, get_promote_candidates
+from mneme.sleep.tools import (
+    find_consolidation_clusters,
+    get_core_refresh_context,
+    get_promote_candidates,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -310,6 +315,15 @@ async def test_core_refresh_logs_are_pending_until_swap_commits(integration_sess
         "new_block_value": "User prefers direct, concrete engineering explanations.",
         "reason": "remove stale and over-specific core details",
     }])
+    pending_ops.append(sleep_tools.draft_core_refresh_checkpoint(
+        {
+            "evidence_mode": "all_active",
+            "active_archival_count": 0,
+            "supporting_archival": [],
+            "ops_since_last_refresh": [],
+        },
+        [{"decision": "REFRESH", "block": "preferences"}],
+    ))
 
     staged_value = (await integration_session.execute(text(
         "SELECT value FROM core_blocks_staging WHERE label = 'preferences'"
@@ -320,13 +334,211 @@ async def test_core_refresh_logs_are_pending_until_swap_commits(integration_sess
 
     await atomic_swap(integration_session, snapshot_ts, pending_ops=pending_ops)
 
-    op_type = (await integration_session.execute(text(
-        "SELECT op_type FROM memory_ops_log WHERE target_id = 'preferences'"
-    ))).scalar_one()
+    op_targets = (await integration_session.execute(text(
+        "SELECT target_id FROM memory_ops_log "
+        "WHERE op_type = 'sleep_core_refresh' ORDER BY id"
+    ))).scalars().all()
 
     assert staged_value == "User prefers direct, concrete engineering explanations."
     assert before_swap == 0
-    assert op_type == "sleep_core_refresh"
+    assert op_targets == ["preferences", "__checkpoint__"]
+
+
+@pytest.mark.asyncio
+async def test_core_refresh_context_loads_all_facts_and_only_ops_after_checkpoint(
+    integration_session,
+):
+    fact_ids = [
+        await _insert_archival(integration_session, f"Active fact {index}.", axis=index)
+        for index in range(3)
+    ]
+    await integration_session.execute(text(
+        "UPDATE core_blocks SET value = 'User profile exists.' WHERE label = 'background'"
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES (
+            'sleep_core_refresh', 'sleep_agent', 'core', '__checkpoint__',
+            'previous refresh check'
+        )
+        """
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES ('remember', 'awake_agent', 'archival', :target_id, 'new fact')
+        """
+    ), {"target_id": str(fact_ids[-1])})
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    context = await get_core_refresh_context(
+        integration_session,
+        all_facts_threshold=200,
+    )
+
+    assert context["refresh_required"] is True
+    assert context["evidence_mode"] == "all_active"
+    assert {fact["id"] for fact in context["supporting_archival"]} == set(fact_ids)
+    assert [op["op_type"] for op in context["ops_since_last_refresh"]] == [
+        "remember"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_core_refresh_context_uses_adaptive_per_core_evidence(
+    integration_session,
+    monkeypatch,
+):
+    semantic_id = await _insert_archival(
+        integration_session,
+        "Semantic match for the background block.",
+        axis=0,
+    )
+    high_signal_id = await _insert_archival(
+        integration_session,
+        "Global high-signal preference.",
+        axis=1,
+    )
+    changed_id = await _insert_archival(
+        integration_session,
+        "Recently changed stage-specific fact.",
+        axis=2,
+    )
+    await integration_session.execute(text(
+        """
+        UPDATE archival_facts SET confidence = 2, salience = 2
+        WHERE id = :id
+        """
+    ), {"id": semantic_id})
+    await integration_session.execute(text(
+        """
+        UPDATE archival_facts
+        SET confidence = 3, stability = 'long_term', salience = 3, use_count = 10
+        WHERE id = :id
+        """
+    ), {"id": high_signal_id})
+    await integration_session.execute(text(
+        """
+        UPDATE archival_facts SET confidence = 2, stability = 'stage', salience = 2
+        WHERE id = :id
+        """
+    ), {"id": changed_id})
+    await integration_session.execute(text(
+        "UPDATE core_blocks SET value = 'Backend developer profile.' WHERE label = 'background'"
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES (
+            'sleep_core_refresh', 'sleep_agent', 'core', '__checkpoint__',
+            'previous refresh check'
+        )
+        """
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES ('remember', 'awake_agent', 'archival', :target_id, 'new fact')
+        """
+    ), {"target_id": str(changed_id)})
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    async def fake_embed_text(_text: str) -> list[float]:
+        vector = [0.0] * 1024
+        vector[0] = 1.0
+        return vector
+
+    monkeypatch.setattr(sleep_tools, "embed_text", fake_embed_text)
+
+    context = await get_core_refresh_context(
+        integration_session,
+        all_facts_threshold=2,
+        per_block_limit=1,
+        high_signal_limit=1,
+    )
+
+    facts = {fact["id"]: fact for fact in context["supporting_archival"]}
+    assert context["evidence_mode"] == "adaptive"
+    assert set(facts) == {semantic_id, high_signal_id, changed_id}
+    assert "semantic:background" in facts[semantic_id]["evidence_reasons"]
+    assert "global_high_signal" in facts[high_signal_id]["evidence_reasons"]
+    assert "changed_since_refresh" in facts[changed_id]["evidence_reasons"]
+
+
+@pytest.mark.asyncio
+async def test_core_refresh_context_skips_when_checkpoint_has_no_new_changes(
+    integration_session,
+):
+    await _insert_archival(integration_session, "Existing fact.")
+    await integration_session.execute(text(
+        "UPDATE core_blocks SET value = 'Existing core.' WHERE label = 'background'"
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES (
+            'sleep_core_refresh', 'sleep_agent', 'core', '__checkpoint__',
+            'latest refresh check'
+        )
+        """
+    ))
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    context = await get_core_refresh_context(integration_session)
+
+    assert context["refresh_required"] is False
+    assert context["skip_reason"] == "no_relevant_changes_since_checkpoint"
+    assert context["supporting_archival"] == []
+
+
+@pytest.mark.asyncio
+async def test_core_refresh_context_reads_awake_fact_inserted_after_snapshot(
+    integration_session,
+):
+    await integration_session.execute(text(
+        "UPDATE core_blocks SET value = 'Existing core.' WHERE label = 'background'"
+    ))
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES (
+            'sleep_core_refresh', 'sleep_agent', 'core', '__checkpoint__',
+            'previous refresh check'
+        )
+        """
+    ))
+    await integration_session.commit()
+    await snapshot_to_staging(integration_session)
+
+    inserted_id = await _insert_archival(
+        integration_session,
+        "Awake inserted this after the Sleep snapshot.",
+    )
+    await integration_session.execute(text(
+        """
+        INSERT INTO memory_ops_log (
+            op_type, actor, target_kind, target_id, reason
+        ) VALUES ('remember', 'awake_agent', 'archival', :target_id, 'new fact')
+        """
+    ), {"target_id": str(inserted_id)})
+    await integration_session.commit()
+
+    context = await get_core_refresh_context(integration_session)
+
+    facts = {fact["id"]: fact for fact in context["supporting_archival"]}
+    assert context["refresh_required"] is True
+    assert inserted_id in facts
+    assert "changed_since_refresh" in facts[inserted_id]["evidence_reasons"]
 
 
 @pytest.mark.asyncio
