@@ -204,7 +204,7 @@ pytest + pytest-asyncio                # 测试
 2. 接其他 MCP host(Cursor / Cline)
 3. Memory 加密(敏感 fact 不进 LLM context)
 4. Memory 可视化 UI(diff / timeline)
-5. Row-level merge for Awake/Sleep concurrent writes(MVP staging swap 简化版)
+5. 大数据量下用 MVCC 快照 + row-level apply 替代整表 staging 复制
 6. LangChain checkpointer 持久化 agent state
 
 ---

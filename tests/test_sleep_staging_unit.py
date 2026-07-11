@@ -31,4 +31,7 @@ async def test_atomic_swap_sets_local_lock_timeout(monkeypatch):
 
     assert "set_config('lock_timeout'" in session.statements[0]
     assert session.params[0] == {"lock_timeout": "500ms"}
+    assert "LOCK TABLE archival_facts IN SHARE ROW EXCLUSIVE MODE" in session.statements[1]
+    assert "INSERT INTO archival_facts_staging" in session.statements[2]
+    assert "UPDATE archival_facts_staging AS staging" in session.statements[3]
     assert session.committed is True

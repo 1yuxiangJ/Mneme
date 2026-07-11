@@ -747,24 +747,42 @@ BEGIN TRANSACTION;
 -- swap 会拿 ACCESS EXCLUSIVE LOCK;拿不到锁就快速失败,避免队头阻塞在线请求
 SELECT set_config('lock_timeout', '500ms', true);
 
--- (a) 把 Awake 期间(snapshot 之后)新写的 archival 合进 staging
+-- (a) 短暂冻结 archival 写入,但普通 SELECT 仍可继续
+--     后面 RENAME 时才会升级为 ACCESS EXCLUSIVE LOCK
+LOCK TABLE archival_facts IN SHARE ROW EXCLUSIVE MODE;
+
+-- (b) 把 Awake 期间(snapshot 之后)新写的 archival 合进 staging
 --     Sleep 跑 5 min 期间 Awake 可能 INSERT 了几条新 archival 到 main
 INSERT INTO archival_facts_staging
   SELECT * FROM archival_facts
   WHERE created_at > snapshot_ts
 ON CONFLICT (id) DO NOTHING;
 
--- (b) 三步 RENAME 切换 main ↔ staging(用 tmp 名做中转)
+-- (c) 合并已有 fact 的并发字段:
+--     语义字段保留 staging(Sleep),访问统计取更新值(Awake),
+--     软删除是单向状态,任意一边删除都保留
+UPDATE archival_facts_staging AS staging
+SET use_count = GREATEST(staging.use_count, main.use_count),
+    last_used_at = CASE
+      WHEN staging.last_used_at IS NULL THEN main.last_used_at
+      WHEN main.last_used_at IS NULL THEN staging.last_used_at
+      ELSE GREATEST(staging.last_used_at, main.last_used_at)
+    END,
+    is_deleted = staging.is_deleted OR main.is_deleted
+FROM archival_facts AS main
+WHERE staging.id = main.id;
+
+-- (d) 三步 RENAME 切换 main ↔ staging(用 tmp 名做中转)
 ALTER TABLE archival_facts RENAME TO archival_facts_tmp_swap;
 ALTER TABLE archival_facts_staging RENAME TO archival_facts;
 ALTER TABLE archival_facts_tmp_swap RENAME TO archival_facts_staging;
 -- core_blocks 同样三步
 
--- (c) TRUNCATE 现在的 staging(里面是旧 main 数据,不需要了)
+-- (e) TRUNCATE 现在的 staging(里面是旧 main 数据,不需要了)
 TRUNCATE archival_facts_staging;
 TRUNCATE core_blocks_staging;
 
--- (d) 把本轮 Sleep 的 pending_ops 写入主审计日志
+-- (f) 把本轮 Sleep 的 pending_ops 写入主审计日志
 --     和 swap 在同一个 transaction 里:主表切换成功,日志才成功
 INSERT INTO memory_ops_log
   (op_type, actor, target_kind, target_id, before_value, after_value, reason)
@@ -805,6 +823,8 @@ COMMIT;
 > **atomic swap**(原子切换):用 transaction 包住 RENAME,要么三个表名全切完,要么一个都不切。中间不会出现"主表有名但里面是 staging 数据"这种半成品状态。
 
 > **lock_timeout**:`ALTER TABLE RENAME` 需要短暂拿 `ACCESS EXCLUSIVE LOCK`。Mneme 在 swap transaction 内设置 `lock_timeout=500ms`;如果当时撞上慢查询或长事务,本轮 swap 快速失败并清理 staging,不把在线读写堵在队头。
+
+> **字段级合并**:snapshot 之后,Awake 可能继续对旧 fact 执行 recall / forget。swap 前按字段所有权合并:内容、标签、confidence、stability、salience 和 embedding 保留 Sleep 在 staging 的整理结果;`use_count` / `last_used_at` 保留 Awake 在主表的最新访问统计;`is_deleted` 对两边做 OR,避免 Sleep demote 或 Awake forget 后 fact 在 swap 中复活。合并前的 `SHARE ROW EXCLUSIVE` 锁会阻止新写入插入合并与 RENAME 之间的窗口,但不阻塞普通 SELECT。
 
 > **pending_ops**:Sleep phase 对 staging 的每次修改都会生成一条日志草稿,暂存在 LangGraph state 里。只有 `atomic_swap` 成功时,这些草稿才会在同一个 transaction 内写入主 `memory_ops_log`。如果 swap 失败,主表不变,日志也不写,避免出现"日志说生效但主表没更新"的审计歧义。
 

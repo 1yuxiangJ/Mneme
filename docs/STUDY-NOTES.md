@@ -2060,23 +2060,28 @@ ON CONFLICT (id) DO NOTHING;   -- 然后 step b 三对 RENAME,step c truncate
 
 → uc 从 11 被打回 10,Awake 那次 +1 没了。**根因不是两人改同一字段**(Sleep 改 content、Awake 改 uc,是不同字段),而是 **staging 那行携带了 snapshot 时刻的过期 uc(10),整行覆盖时把过期值一起搬过去盖了主表的新值**。
 
-**字段级合并解法**:swap 时不整行盖,**按字段分归属**:
+**字段级合并解法**:swap 时不整行盖,**按字段分归属**(Day 31 已落地):
 
 | 字段 | 归谁 | swap 取谁 |
 |---|---|---|
-| content / confidence / is_deleted | Sleep(语义决策) | staging |
-| use_count / last_used_at | Awake(访问统计) | 主表 |
+| content / tags / confidence / stability / salience / embedding | Sleep(语义决策) | staging |
+| use_count / last_used_at | Awake(访问统计) | 两边取更新值 |
+| is_deleted | Awake forget 和 Sleep demote 都能写 | 两边 OR,删除一旦发生就保留 |
 
 实现 = swap 前把主表的统计字段回填进 staging:
 ```sql
-UPDATE archival_facts_staging s
-SET use_count = m.use_count, last_used_at = m.last_used_at
-FROM archival_facts m
+LOCK TABLE archival_facts IN SHARE ROW EXCLUSIVE MODE;
+
+UPDATE archival_facts_staging AS s
+SET use_count = GREATEST(s.use_count, m.use_count),
+    last_used_at = GREATEST(s.last_used_at, m.last_used_at),
+    is_deleted = s.is_deleted OR m.is_deleted
+FROM archival_facts AS m
 WHERE s.id = m.id;
 ```
-→ content 取 Sleep 的,use_count 取 Awake 的,**谁也不盖谁**。这正是代码注释里 "Day 03+: row-level merge for use_count / last_used_at" 的 TODO。
+→ content 取 Sleep 的,use_count 保留 Awake 的实时增量,**谁也不盖谁**。短锁还会关闭“合并完成后、RENAME 之前 Awake 又写一次”的尾部竞态;`SHARE ROW EXCLUSIVE` 阻止 INSERT / UPDATE / DELETE,但普通 SELECT 仍可继续。
 
-**收口认知**:冲突根源是"整行覆盖这个粗暴动作",不是"抢同一字段"。**解法不是加锁,是按字段划分所有权**(语义归 Sleep,统计归 Awake)。
+**收口认知**:冲突根源是"整行覆盖这个粗暴动作",不是"抢同一字段"。**字段所有权解决取值冲突,短锁解决合并与 swap 之间的时序窗口**,两者职责不同。
 
 ---
 
@@ -3962,7 +3967,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 |---|---|---|---|---|
 | 1 | **embedding 复用** | Day 14 已做:进程内 embedding cache,同文本复用向量 | 后续可加跨进程 cache / provider 级别 metrics | §5.1 讨论补录 |
 | 2 | **写异步、读同步** | Day 29 已升级:`remember`/`forget` 先落 `memory_write_jobs`,再由 worker 异步跑 Awake;`recall` 同步;Day 18 已做:`list_memory` 同步直读 DB fast path | 后续可加 MCP job 状态查询、自动清理 succeeded job、队列 metrics | §5.1 讨论补录 |
-| 3 | **swap 字段级合并** | swap 整行覆盖,丢 cycle 期间 Awake 的 use_count 更新 | 按字段分归属:语义字段(content/confidence)取 staging,统计字段(use_count/last_used)取主表回填 | §4.4 Q3 |
+| 3 | **swap 字段级合并** | Day 31 已做:语义字段保留 staging,`use_count/last_used_at` 取更新值,`is_deleted` 两边 OR;合并前用短锁关闭尾部竞态 | 后续只有当 archival 增加可反向修改的共享字段时,才需要 version / updated_at 类更通用的冲突检测 | §4.4 Q3 / Day 31 |
 | 4 | **大数据量放弃整表复制** | snapshot 整表复制到 staging,100 万行扛不住 | 改 MVCC 快照读(REPEATABLE READ,不锁不复制)+ 短事务只 apply 改动的少数行 | §4.4 Q1 |
 | 5 | **swap 加 lock_timeout** | Day 14 已做:swap transaction 内设置 `lock_timeout=500ms` | 后续可加 retry/backoff 和失败告警 | §4.4 Q2 |
 | 6 | **partial index 谓词硬编码**(注意事项) | 谓词若用参数绑定 `$1`,planner 不用 partial index → 白建 | query 硬编码 `WHERE is_deleted=FALSE` + EXPLAIN 验证走 Index Scan | §4.2 Q2 |
@@ -3976,7 +3981,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
 | 14 | **Awake ReAct 卡死防护** | Day 14 已做:`recursion_limit=8` + LLM `timeout=20,max_retries=1` + 整体 `wait_for=45s` + 写类异步 | 后续可加 p99 latency 监控和 step_count 接近 limit 告警 | §5.2 讨论(Awake ReAct 风险) |
 
-**面试一句话**:"这项目我维护了一个优化 backlog,十几项,从 embedding 复用、写异步读同步,到 swap 字段级合并、大数据量改 MVCC 快照——每项都知道现状、改法和触发条件。MVP 主动没做,是 scope 选择不是没想到。"
+**面试一句话**:"这项目我维护了一个优化 backlog,十几项,从 embedding 复用、写异步读同步,到 swap 字段级合并、大数据量改 MVCC 快照——已经落地的会记录验证结果,暂缓的会记录改法和触发条件,而不是把所有生产化能力一次堆进 MVP。"
 
 ---
 

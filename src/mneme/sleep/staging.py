@@ -11,18 +11,18 @@ Concurrency model (Letta-paper-inspired, MVP-simplified):
 
   3. atomic_swap()
      - In a single transaction:
-         a) Move any new archival rows from main → staging
+         a) Briefly block archival writers while still allowing readers
+         b) Move any new archival rows from main → staging
             (created_at > snapshot_ts, skip if already present)
-         b) RENAME the three pairs to swap main ↔ staging
-         c) Truncate the now-staging (old main).
+         c) Merge Awake-owned usage fields from main into existing staging rows
+         d) Use a three-step RENAME for each main ↔ staging pair
+         e) Truncate the now-staging (old main).
      - Awake's next read picks up the new main.
 
-Trade-off (MVP): If Awake INSERTED to archival_facts during the cycle,
-those rows are merged in step (a). If Awake UPDATED (e.g. mark_archival_used),
-those updates may be lost on rows that Sleep also modified. We accept this for
-MVP; the conflict is rare (Sleep modifies few rows; Awake updates many).
-
-Day 03+ improvement: row-level merge for use_count / last_used_at.
+Field ownership during the merge:
+  - Sleep semantic fields (content/tags/confidence/etc.) stay in staging.
+  - Awake usage fields (use_count/last_used_at) take the freshest value.
+  - is_deleted is monotonic: a delete by either agent remains deleted.
 """
 from __future__ import annotations
 
@@ -116,7 +116,13 @@ async def atomic_swap(
         {"lock_timeout": f"{settings.sleep_swap_lock_timeout_ms}ms"},
     )
 
-    # Step a: merge new archival rows from main → staging (Sleep didn't see them).
+    # Freeze archival writes across merge + swap. Normal SELECTs remain available;
+    # ALTER TABLE below briefly upgrades this to ACCESS EXCLUSIVE for the rename.
+    await session.execute(text(
+        "LOCK TABLE archival_facts IN SHARE ROW EXCLUSIVE MODE"
+    ))
+
+    # Step b: merge new archival rows from main → staging (Sleep didn't see them).
     await session.execute(text(
         """
         INSERT INTO archival_facts_staging
@@ -126,7 +132,36 @@ async def atomic_swap(
         """
     ), {"snapshot_ts": snapshot_ts})
 
-    # Step b: swap names using a tmp suffix.
+    # Step c: preserve Awake changes to rows that existed at snapshot time.
+    # Semantic fields intentionally stay untouched in staging because Sleep owns
+    # them. Deletion is monotonic, so a forget/demote from either side wins.
+    await session.execute(text(
+        """
+        UPDATE archival_facts_staging AS staging
+        SET use_count = GREATEST(staging.use_count, main.use_count),
+            last_used_at = CASE
+                WHEN staging.last_used_at IS NULL THEN main.last_used_at
+                WHEN main.last_used_at IS NULL THEN staging.last_used_at
+                ELSE GREATEST(staging.last_used_at, main.last_used_at)
+            END,
+            is_deleted = staging.is_deleted OR main.is_deleted
+        FROM archival_facts AS main
+        WHERE staging.id = main.id
+          AND (
+              main.use_count > staging.use_count
+              OR (
+                  main.last_used_at IS NOT NULL
+                  AND (
+                      staging.last_used_at IS NULL
+                      OR main.last_used_at > staging.last_used_at
+                  )
+              )
+              OR (main.is_deleted AND NOT staging.is_deleted)
+          )
+        """
+    ))
+
+    # Step d: swap names using a tmp suffix.
     # Use double rename via tmp to ensure atomicity within the transaction.
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
@@ -135,7 +170,7 @@ async def atomic_swap(
         await session.execute(text(f"ALTER TABLE {staging} RENAME TO {tbl}"))
         await session.execute(text(f"ALTER TABLE {tmp} RENAME TO {staging}"))
 
-    # Step c: truncate the now-staging (which was the old main).
+    # Step e: truncate the now-staging (which was the old main).
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
         await session.execute(text(f"TRUNCATE {staging}"))

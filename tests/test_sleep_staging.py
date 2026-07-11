@@ -204,6 +204,73 @@ async def test_atomic_swap_merges_new_archival_during_cycle(integration_session)
 
 
 @pytest.mark.asyncio
+async def test_atomic_swap_merges_existing_archival_fields_by_owner(
+    integration_session,
+):
+    """Sleep semantic edits and Awake usage/deletion updates must both survive."""
+    recalled_id = await _insert_signal_archival(
+        integration_session,
+        "Original wording.",
+        confidence=3,
+        stability="long_term",
+        salience=3,
+        use_count=5,
+    )
+    forgotten_id = await _insert_signal_archival(
+        integration_session,
+        "Awake will forget this during Sleep.",
+        confidence=3,
+        stability="long_term",
+        salience=2,
+        use_count=1,
+    )
+    await integration_session.commit()
+
+    snapshot_ts = await snapshot_to_staging(integration_session)
+
+    # Sleep owns semantic consolidation and demotion in staging.
+    await integration_session.execute(text(
+        """
+        UPDATE archival_facts_staging
+        SET content = 'Sleep consolidated wording.', is_deleted = TRUE
+        WHERE id = :id
+        """
+    ), {"id": recalled_id})
+
+    # Awake owns live usage signals and can forget an existing main-table fact.
+    await integration_session.execute(text(
+        """
+        UPDATE archival_facts
+        SET use_count = use_count + 1,
+            last_used_at = TIMESTAMPTZ '2026-07-11 12:00:00+08'
+        WHERE id = :id
+        """
+    ), {"id": recalled_id})
+    await integration_session.execute(text(
+        "UPDATE archival_facts SET is_deleted = TRUE WHERE id = :id"
+    ), {"id": forgotten_id})
+    await integration_session.commit()
+
+    await atomic_swap(integration_session, snapshot_ts)
+
+    recalled = (await integration_session.execute(text(
+        """
+        SELECT content, use_count, last_used_at, is_deleted
+        FROM archival_facts WHERE id = :id
+        """
+    ), {"id": recalled_id})).one()
+    forgotten = (await integration_session.execute(text(
+        "SELECT is_deleted FROM archival_facts WHERE id = :id"
+    ), {"id": forgotten_id})).scalar_one()
+
+    assert recalled.content == "Sleep consolidated wording."
+    assert recalled.use_count == 6
+    assert recalled.last_used_at is not None
+    assert recalled.is_deleted is True
+    assert forgotten is True
+
+
+@pytest.mark.asyncio
 async def test_sleep_logs_are_pending_until_swap_commits(integration_session):
     """Sleep phase logs should only enter memory_ops_log after swap succeeds."""
     from mneme.sleep.tools import apply_resolutions
