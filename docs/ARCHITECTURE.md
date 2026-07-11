@@ -741,7 +741,106 @@ archival 层不强求全局一致,因为它保留的是"用户曾经表达过什
 
 **为啥**:把已被 Sleep 改过的 staging 切换成新 main。**原子**切换避免 Awake 看到"半成品"状态。
 
-**做啥**(全部在单 transaction 内):
+#### 先看懂两版数据
+
+Sleep 运行期间,同一类记忆有两个版本:
+
+```text
+archival_facts          = 正式主表 A,Awake 持续读写
+archival_facts_staging  = Sleep 工作副本 B,Sleep 在这里整理
+
+core_blocks             = 正式 Core A,Awake 只读
+core_blocks_staging     = Sleep 整理后的 Core B
+```
+
+Node 9 不是直接把 B 盖到 A 上,而是先把 Sleep 期间 A 里发生的实时变化合并进 B,再交换 A / B 的表名。全部动作在同一个 PostgreSQL transaction 中完成。
+
+#### 第一步:快速拿锁,冻结 Archival 写入
+
+`lock_timeout=500ms` 限制的是**等锁时间**,不是整个 swap 的运行时间。500ms 内拿不到锁就放弃本轮,避免 swap 在长查询后面排队并堵住新请求。
+
+拿到 `SHARE ROW EXCLUSIVE` 后:
+
+```text
+普通 SELECT              -> 仍可继续
+INSERT / UPDATE / DELETE -> 暂时等待
+```
+
+这会关闭“合并刚完成,Awake 又写一次,然后立刻 swap”的尾部竞态窗口。
+
+#### 第二步:把 Awake 新增的 Fact 补进 B
+
+例如 snapshot 时两边都只有 `#1 / #2`,Sleep 期间 Awake 在主表 remember 了 `#3`:
+
+```text
+主表 A: #1 #2 #3
+Sleep B: #1 #2
+```
+
+Node 9 用 `created_at > snapshot_ts` 找到 `#3`,补入 B。`ON CONFLICT (id) DO NOTHING` 让保守多捞的行可以安全忽略重复 ID。
+
+#### 第三步:合并旧 Fact 的并发字段
+
+对 snapshot 时已经存在的 Fact,Sleep 和 Awake 可能修改了不同字段:
+
+```text
+主表 A: content="用户喜欢足球",       use_count=6
+Sleep B: content="用户长期关注足球运动", use_count=5
+```
+
+如果整行取 A,Sleep 的语义整理会丢;整行取 B,Awake 的 recall 计数会丢。因此按字段所有权合并:
+
+| 字段 | 最终取值 |
+|---|---|
+| `content/tags/confidence/stability/salience/embedding` | Sleep 在 B 里的语义整理结果 |
+| `use_count/last_used_at` | A / B 中更大、更新的访问统计 |
+| `is_deleted` | A / B 做 OR,任意一边 forget / demote 都保留删除 |
+
+上例的最终结果是:
+
+```text
+content="用户长期关注足球运动"
+use_count=6
+```
+
+#### 第四步:用三步 RENAME 交换 A / B
+
+`archival_facts_staging` 不能直接改名为 `archival_facts`,因为这个名字正被 A 占用。所以要经过一个临时名:
+
+```text
+初始:
+  archival_facts          = A
+  archival_facts_staging  = B
+
+1. archival_facts -> archival_facts_tmp_swap
+2. archival_facts_staging -> archival_facts
+3. archival_facts_tmp_swap -> archival_facts_staging
+
+结果:
+  archival_facts          = B  (新主表)
+  archival_facts_staging  = A  (旧主表)
+```
+
+`core_blocks` / `core_blocks_staging` 也执行同样的三步。RENAME 会短暂需要 `ACCESS EXCLUSIVE LOCK`,但 PostgreSQL 的 DDL 在 transaction 中也是原子的:Awake 只会看到提交前的 A,或提交后的 B,不会看到中间改名状态。
+
+#### 第五步:清空旧主表
+
+换名后,`*_staging` 指向的已经是旧 A。Node 9 对它执行 `TRUNCATE`,保留空表结构。因此成功 Sleep 后在 DataGrip 里看到空 staging 表是正常现象,不是脏数据。
+
+#### 第六步:把 pending ops 与 swap 一起提交
+
+Promote / Demote / Resolve / Refresh / Reflect 产生的日志在前面都只是内存草稿。Node 9 才把它们写入 `memory_ops_log`,并和表名切换使用同一个 transaction。
+
+```text
+全部成功 -> 新主表 + Sleep 日志 + Refresh checkpoint 一起生效
+任意失败 -> 整个 transaction 回滚,仍使用旧主表,日志和 checkpoint 都不写
+```
+
+所以 Node 9 是整个 Sleep cycle 的**真正提交点**:前面所有 phase 只是在 staging 中准备候选结果,swap 成功后才影响正式记忆。
+
+#### 对照实际 SQL
+
+下面的 SQL 就是上述六步的代码形式,全部位于同一个 transaction:
 
 ```sql
 BEGIN TRANSACTION;
@@ -825,7 +924,7 @@ COMMIT;
 
 > **staging table**(临时工作表):跟主表 schema 一样的副本。Sleep 在 staging 上改东西,改完一口气切换到 main。Sleep 跑期间 Awake 完全不受影响(它读写 main,看不到 staging)。
 
-> **atomic swap**(原子切换):用 transaction 包住 RENAME,要么三个表名全切完,要么一个都不切。中间不会出现"主表有名但里面是 staging 数据"这种半成品状态。
+> **atomic swap**(原子切换):用 transaction 包住 Core / Archival 两组三步 RENAME,要么两组全部切换并写入 pending logs,要么全部回滚。Awake 不会看到中间改名状态。
 
 > **lock_timeout**:`ALTER TABLE RENAME` 需要短暂拿 `ACCESS EXCLUSIVE LOCK`。Mneme 在 swap transaction 内设置 `lock_timeout=500ms`;如果当时撞上慢查询或长事务,本轮 swap 快速失败并清理 staging,不把在线读写堵在队头。
 
