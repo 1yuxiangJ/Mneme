@@ -553,7 +553,9 @@ COMMIT;
 **注意**:`demote` 不是删 core block。core block 是高层用户画像,由 `promote` / `resolve` / `core_refresh` 修改;`demote` 当前只处理 `archival_facts_staging` 里的低价值 fact。
 
 **做啥**:
-1. SQL 找 stale candidates:长期没被 recall 用过,且 `confidence <= 1 OR stability='temporary' OR salience <= 1`,还没被软删的 archival
+1. SQL 找 stale candidates:长期没被 recall 用过,且 `confidence <= 1 OR stability='temporary' OR salience <= 1`,还没被软删的 archival。时间基准分两种:
+   - `last_used_at IS NOT NULL`:最后一次使用早于 90 天前
+   - `last_used_at IS NULL`:从未使用,但 `created_at` 也已经早于 90 天前
 2. 把候选喂 LLM `DEMOTE_PROMPT`
 3. LLM 对每条判断 `FORGET` / `KEEP`
 4. 只对 `FORGET` 的 fact 在 staging 表里 `is_deleted = TRUE`
@@ -585,6 +587,7 @@ COMMIT;
   ```
 
 **保守规则**:
+- `last_used_at=NULL` 只表示“从未使用”,不表示“已经过期”。新 Fact 从 `created_at` 开始获得完整的 90 天观察期
 - `confidence=3` 永远不由 demote 删除
 - `stability=long_term AND salience>=2` 的事实默认保守保留
 - 有可能解释 core block 的 fact 不删

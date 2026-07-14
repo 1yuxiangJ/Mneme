@@ -34,6 +34,11 @@ _CORE_REFRESH_RELEVANT_OPS = (
     "sleep_core_refresh",
 )
 
+_STALE_FACT_AGE_PREDICATE = (
+    "((last_used_at IS NOT NULL AND last_used_at < :cutoff) "
+    "OR (last_used_at IS NULL AND created_at < :cutoff))"
+)
+
 
 def _vector_literal(value: Any) -> str:
     """Return a pgvector-compatible '[...]' literal from DB-returned values."""
@@ -92,7 +97,7 @@ async def summarize_state(
         "SELECT count(*) FROM archival_facts "
         "WHERE is_deleted = FALSE "
         "AND (confidence <= 1 OR stability = 'temporary' OR salience <= 1) "
-        "AND (last_used_at IS NULL OR last_used_at < :cutoff)"
+        f"AND {_STALE_FACT_AGE_PREDICATE}"
     ), {"cutoff": stale_cutoff})).scalar_one())
 
     high_freq = bool((await session.execute(text(
@@ -225,7 +230,7 @@ async def get_stale_candidates(
         "FROM archival_facts_staging "
         "WHERE is_deleted = FALSE "
         "AND (confidence <= 1 OR stability = 'temporary' OR salience <= 1) "
-        "AND (last_used_at IS NULL OR last_used_at < :cutoff) "
+        f"AND {_STALE_FACT_AGE_PREDICATE} "
         "ORDER BY created_at ASC LIMIT :lim"
     ), {"cutoff": cutoff, "lim": limit})).all()
 

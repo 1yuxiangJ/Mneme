@@ -1412,14 +1412,18 @@ PROMOTE 候选:  use_count >= 5
               AND salience >= 3
               ↑ Awake search_archival 命中次数(说明常被用到)
 
-DEMOTE 候选:   last_used_at < now() - 90 days
+DEMOTE 候选:   ((last_used_at IS NOT NULL AND last_used_at < now() - 90 days)
+               OR
+               (last_used_at IS NULL AND created_at < now() - 90 days))
               AND (confidence <= 1 OR stability='temporary' OR salience <= 1)
-              ↑ 长期没被命中(说明 LLM 都不觉得相关)
+              ↑ 用过的 Fact 看最后使用时间;从未用过的 Fact 看创建时间
 
 REFLECT 时:    created_at DESC LIMIT 10 = "最近 fact 摘要"
 ```
 
 **`use_count` 怎么变**:`semantic_search_archival` 命中后,Memory Store 自动 `UPDATE ... SET use_count = use_count + 1, last_used_at = now()`。**读操作有 side-effect**——这是个故意的设计,违反"读不改写"原则,但这是 Letta paper 推荐的"用 access pattern 信号驱动 consolidation"。
+
+**为什么不能写成 `last_used_at IS NULL OR last_used_at < cutoff`**:`NULL` 的含义是“从未被 Recall”,并不等于“已经 90 天没用”。如果直接把所有 `NULL` 当 stale,刚 Remember 的低信号 Fact 会在下一轮 Sleep 立刻进入 Demote。现在从未使用的 Fact 改看 `created_at`,因此也有完整的 90 天观察期。Plan 阶段的 stale 计数和 Demote 阶段的候选查询复用同一条 SQL 条件,避免两边口径漂移。
 
 → **每次 Awake `recall` 都在悄悄给 Sleep 喂数据**。
 
@@ -2609,7 +2613,8 @@ sleep/agent.py: run_sleep_cycle()
     │ stale = get_stale_candidates(session)
     │   SELECT * FROM archival_facts_staging
     │   WHERE (confidence <= 1 OR stability = 'temporary' OR salience <= 1)
-    │     AND (last_used_at IS NULL OR last_used_at < now() - 90 days)
+    │     AND ((last_used_at IS NOT NULL AND last_used_at < now() - 90 days)
+    │       OR (last_used_at IS NULL AND created_at < now() - 90 days))
     │   ORDER BY created_at ASC LIMIT 50
     │ if stale:
     │   rendered = DEMOTE_PROMPT.format(stale_json=...)

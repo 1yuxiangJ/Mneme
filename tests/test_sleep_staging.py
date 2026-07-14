@@ -15,6 +15,8 @@ from mneme.sleep.tools import (
     find_consolidation_clusters,
     get_core_refresh_context,
     get_promote_candidates,
+    get_stale_candidates,
+    summarize_state,
 )
 
 pytestmark = pytest.mark.integration
@@ -161,6 +163,54 @@ async def test_promote_candidates_require_long_term_salient_explicit_memory(
     assert [item["id"] for item in candidates] == [stable_id]
     assert candidates[0]["stability"] == "long_term"
     assert candidates[0]["salience"] == 3
+
+
+@pytest.mark.asyncio
+async def test_demote_staleness_uses_creation_time_for_never_used_facts(
+    integration_session,
+):
+    """Never-used facts receive the same age window as previously used facts."""
+    rows = (await integration_session.execute(text(
+        """
+        INSERT INTO archival_facts (
+            content, tags, confidence, stability, salience, source,
+            created_at, last_used_at
+        ) VALUES
+            (
+                'New and never used.', ARRAY['test'], 1, 'temporary', 1, 'test',
+                now() - INTERVAL '1 day', NULL
+            ),
+            (
+                'Old and never used.', ARRAY['test'], 1, 'temporary', 1, 'test',
+                now() - INTERVAL '100 days', NULL
+            ),
+            (
+                'Old but recently used.', ARRAY['test'], 1, 'temporary', 1, 'test',
+                now() - INTERVAL '100 days', now() - INTERVAL '1 day'
+            ),
+            (
+                'Old and last used long ago.', ARRAY['test'], 1, 'temporary', 1, 'test',
+                now() - INTERVAL '200 days', now() - INTERVAL '100 days'
+            ),
+            (
+                'Old but high signal.', ARRAY['test'], 3, 'long_term', 3, 'test',
+                now() - INTERVAL '100 days', NULL
+            )
+        RETURNING id, content
+        """
+    ))).all()
+    ids = {row.content: row.id for row in rows}
+    await integration_session.commit()
+
+    summary = await summarize_state(integration_session, last_cycle_ts=None)
+    await snapshot_to_staging(integration_session)
+    candidates = await get_stale_candidates(integration_session)
+
+    assert summary.stale_archival_count == 2
+    assert {item["id"] for item in candidates} == {
+        ids["Old and never used."],
+        ids["Old and last used long ago."],
+    }
 
 
 @pytest.mark.asyncio

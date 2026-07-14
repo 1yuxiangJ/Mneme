@@ -152,9 +152,10 @@ Rules:
 
 DEMOTE_PROMPT = """You are mneme's Sleep agent in the DEMOTE phase.
 
-Below are stale archival facts (last_used_at > 90 days ago) with low signal:
-low confidence, temporary stability, or low salience. Decide whether each can
-be safely forgotten.
+Below are stale archival facts with low signal: low confidence, temporary
+stability, or low salience. A fact is stale when its last use was over 90 days
+ago, or, if it has never been used, when it was created over 90 days ago.
+Decide whether each can be safely forgotten.
 
 Stale candidates:
 {stale_json}
