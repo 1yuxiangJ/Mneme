@@ -36,7 +36,9 @@ POLICY (CRITICAL — Letta read-only primary):
 GUIDELINES per MCP tool:
 
 1) `remember(content, tags, confidence, stability, salience)`:
-   - First call search_archival(query=content) to detect near-duplicates.
+   - First call find_archival_duplicates(query=content) to detect near-duplicates.
+     Never use search_archival for Remember deduplication, because that tool
+     records a real user-facing recall by incrementing use_count.
    - If a near-duplicate exists (distance < 0.1), skip and explain "duplicate of <id>".
    - Otherwise call insert_archival_fact(content, tags, confidence, stability,
      salience, reason=brief rationale).

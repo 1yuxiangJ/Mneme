@@ -45,6 +45,8 @@ Output strictly this JSON (no commentary):
 Constraints:
 - If archival_count < {min_archival}: skip everything except reflect.
 - If no archival created since last cycle: skip consolidate.
+- If stale_count > 0: include demote. The runtime also enforces this inspection;
+  the Demote phase still decides conservatively between FORGET and KEEP.
 - Always include core_refresh. It cheaply skips its LLM call when no relevant
   memory changes have occurred since its last successful checkpoint.
 - Always include reflect at the end of a productive cycle (it's cheap, gives

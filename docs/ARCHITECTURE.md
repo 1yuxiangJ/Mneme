@@ -128,7 +128,7 @@ Claude Code 自带 `CLAUDE.md`(每个 project 根目录可放的 markdown,启动
 
 **不应该记的范围**:临时状态、当天计划、一次性事件、短期情绪、项目内部事实。比如"今天有点累"不记;"最近游戏机不在身边"默认不记,除非用户确认这是长期模式。
 
-**mneme 内部**:MCP tool 先把写入意图同步写入 `memory_write_jobs`;提交成功后快速返回 `accepted + job_id`;后台 worker 再复用 Awake agent ReAct → 先 `search_archival` 去重 → 没重复就 `insert_archival_fact` → 写 `memory_ops_log`
+**mneme 内部**:MCP tool 先把写入意图同步写入 `memory_write_jobs`;提交成功后快速返回 `accepted + job_id`;后台 worker 再复用 Awake agent ReAct → 先 `find_archival_duplicates` 去重 → 没重复就 `insert_archival_fact` → 写 `memory_ops_log`。查重工具不增加 `use_count`;只有真正的 Recall 命中才算使用信号。
 
 **返回**:`{"status": "accepted", "mode": "durable_async", "operation": "remember", "job_id": 42}`
 
@@ -216,7 +216,8 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
                    ▼
 ┌────────────────────────────────────────────────┐
 │  Layer 2: Awake 内部 @tool                      │
-│  load_core / search_archival /                  │
+│  load_core / find_archival_duplicates /         │
+│  search_archival /                              │
 │  insert_archival_fact / get_overview /          │
 │  forget_archival                                │
 │  ── "原子操作" 层                              │
@@ -232,17 +233,16 @@ mneme 有**两层 tool**——这是个**架构分层**的设计:
 
 如果 MCP `remember` 直接调 `store.insert_archival`——中间没 LLM——那就是"LLM 包装的 CRUD",失去 agent 性。让 LLM 在 Awake 内部跑 ReAct,**才能根据 observation 自适应**:
 
-- 事实明确 + 短文本 → LLM 可能跳过 search 直接 insert
-- 低 confidence + 长文本 → 先 search 看有没有近似
+- 所有 Remember 先查重,但 LLM 根据距离和语义判断是否真重复
 - 检测到 dup → LLM 决定 skip / merge / 还是 insert
 
 简单 case(`forget`)看起来是 1:1 多此一举,但**统一架构**有好处:未来想加复杂逻辑只改 prompt,不动代码。`list_memory` 是例外:它是新 session 的启动读路径,必须尽量稳定、低延迟、低成本,所以直接查 DB。
 
-**4 个 MCP tool ↔ Awake 5 个内部 @tool 对应表**:
+**4 个 MCP tool ↔ Awake 6 个内部 @tool 对应表**:
 
 | MCP tool(Layer 1) | Awake 内部 @tool(Layer 2) | 关系 |
 |---|---|---|
-| `remember` | `memory_write_jobs` → worker → `search_archival` + `insert_archival_fact` | 1:多(LLM 决定怎么组合);MCP 层 durable 异步返回 |
+| `remember` | `memory_write_jobs` → worker → `find_archival_duplicates` + `insert_archival_fact` | 1:多(LLM 决定怎么组合);查重不计 `use_count`;MCP 层 durable 异步返回 |
 | `recall` | `load_core` + `search_archival` | 1:多 |
 | `list_memory` | 不走 Awake;MCP 层直读 DB | direct DB fast path |
 | `forget` | `memory_write_jobs` → worker → `forget_archival` | 1:1(简单 case);MCP 层 durable 异步返回 |
@@ -313,7 +313,7 @@ Claude Code → mneme MCP server:
                                 │   LLM 看 system prompt:
                                 │   "我应该先 search 看有没有重复"
                                 ▼
-                       调 internal tool: search_archival(
+                       调 internal tool: find_archival_duplicates(
                          "user prefers 4-space indent")
                                 │
                                 │ (Awake Agent 内部 @tool,不是 MCP tool)
@@ -327,6 +327,7 @@ Claude Code → mneme MCP server:
                                 │         ORDER BY embedding <=> :vec
                                 │         LIMIT 5
                                 │ 3. pgvector 用 HNSW 索引秒级找最近邻
+                                │ 4. 不更新 use_count / last_used_at
                                 ▼
                        返回 [{id: 12, content: "...similar fact...",
                               distance: 0.4}]
@@ -342,7 +343,7 @@ Claude Code → mneme MCP server:
                        memory/store.py:insert_archival(...)
                                 │
                                 │ 1. 取 content embedding
-                                │    (如果 search_archival 刚算过同文本,直接复用 cache)
+                                │    (如果查重刚算过同文本,直接复用 cache)
                                 │ 2. INSERT INTO archival_facts
                                 │    (content, tags, confidence, embedding, ...)
                                 │ 3. INSERT INTO memory_ops_log
@@ -463,7 +464,12 @@ COMMIT;
 
 → `state["plan"] = ["consolidate", "promote", "core_refresh", "reflect"]`
 
-后续 `consolidate / promote / demote / resolve / reflect` 仍按 plan 决定是否执行。`core_refresh` 是例外:运行时会强制把它补进 plan,因为计划阶段没有足够证据判断 Core 是否过时。它每轮都进入检查,但如果上次 checkpoint 后没有相关变化,会在调 LLM 前快速跳过。
+后续 `consolidate / promote / resolve / reflect` 按 plan 决定是否执行。两个确定性检查例外:
+
+- `stale_count > 0` 时运行时强制补入 `demote`:SQL 只负责证明有候选,Demote LLM 仍决定 `FORGET / KEEP`。
+- `core_refresh` 每轮强制进入检查:如果上次 checkpoint 后没有相关变化,会在调 LLM 前快速跳过。
+
+这样 Plan 仍负责按状态节省无意义阶段,但不能跳过已经有明确证据的过期审查和 Core 维护。
 
 ---
 
@@ -826,6 +832,8 @@ use_count=6
 
 `core_blocks` / `core_blocks_staging` 也执行同样的三步。RENAME 会短暂需要 `ACCESS EXCLUSIVE LOCK`,但 PostgreSQL 的 DDL 在 transaction 中也是原子的:Awake 只会看到提交前的 A,或提交后的 B,不会看到中间改名状态。
 
+表对象改名时,`archival_facts_id_seq` 的所有权会跟着旧主表对象移动到 staging。Node 9 会在同一事务里把 sequence default 和 ownership 重新绑定到新的 `archival_facts.id`;否则后续 `DROP staging CASCADE` 可能连 sequence 一起删除,导致新 Remember 无法生成 Fact ID。
+
 #### 第五步:清空旧主表
 
 换名后,`*_staging` 指向的已经是旧 A。Node 9 对它执行 `TRUNCATE`,保留空表结构。因此成功 Sleep 后在 DataGrip 里看到空 staging 表是正常现象,不是脏数据。
@@ -881,6 +889,11 @@ ALTER TABLE archival_facts RENAME TO archival_facts_tmp_swap;
 ALTER TABLE archival_facts_staging RENAME TO archival_facts;
 ALTER TABLE archival_facts_tmp_swap RENAME TO archival_facts_staging;
 -- core_blocks 同样三步
+
+-- sequence 所有权重新绑定到新主表,避免清理 staging 时被 CASCADE 删除
+ALTER TABLE archival_facts
+  ALTER COLUMN id SET DEFAULT nextval('archival_facts_id_seq'::regclass);
+ALTER SEQUENCE archival_facts_id_seq OWNED BY archival_facts.id;
 
 -- (e) TRUNCATE 现在的 staging(里面是旧 main 数据,不需要了)
 TRUNCATE archival_facts_staging;
@@ -1051,6 +1064,26 @@ Sleep cycle 启动时 `DROP + CREATE` 一份 staging 副本。成功 `atomic_swa
 | 第 3 道(DB 自检) | `core_blocks.last_writer` 字段 | 默认 `sleep_agent`,Sleep 写时 SET = 'sleep_agent';未来加 trigger 校验 |
 
 **为什么 3 道**:LLM 可能 prompt 写得不到位偶尔越界,应用层是兜底;应用层代码可能 bug,DB 字段是最后防线。**Defense in depth(纵深防御)**——任何单层失效都不破。
+
+### 8.1 最小自动化评测(2026-07-14)
+
+评测入口:`uv run python scripts/run_eval.py`。脚本把 `.env` 中数据库凭据切换到独立的 `mneme_eval`,并硬性拒绝清空名称不以 `_eval` 结尾的数据库。数据经过真实 durable Remember queue、Awake ReAct、Recall 和一次完整 Sleep,不是直接伪造最终表数据;只有一条历史 Fact 的时间被回拨 120 天,用于测试 Demote。
+
+数据集规模:10 条 Remember 输入(9 条应存、1 条近重复应跳过)、5 个 Recall Query、1 个 Promote 目标、1 个过期 Demote 目标、1 个近期低信号防误删目标。完整报告见 `evals/reports/minimal-eval-report.md`,逐案例证据见相邻 JSON。
+
+| 面试指标 | 实测结果 |
+|---|---:|
+| Remember 决策准确率 | **10/10 = 100%** |
+| Awake Recall@3 | **5/5 = 100%** |
+| Awake MRR | **1.000** |
+| Agent 端到端 Recall | **5/5 = 100%** |
+| Sleep 后 Recall@3 / MRR | **100% / 1.000** |
+| Sleep 生命周期检查 | **4/4 = 100%** |
+| 总确定性检查 | **29/29 = 100%** |
+
+Sleep 的 4 个生命周期检查分别是:高频稳定偏好成功 Promote、120 天前低信号 Fact 成功 Demote、近期低信号 Fact 未被误删、近重复输入最终只有 1 个 active copy。本轮 Sleep plan 为 `promote / demote / core_refresh / reflect`,总耗时 165.13 秒。
+
+**面试时要诚实说明边界**:这是小规模合成集上的单次最小评测,证明的是关键链路可重复跑通,不能外推为生产准确率。No Memory 的 Recall@3=0 是空库确定性基线,不是另一套模型回答质量评测。Awake-only 和 Sleep 后检索指标都为 100%,所以本次数据支持的结论是“Sleep 在不降低检索质量的情况下完成了 Core Promote 和记忆淘汰”,而不是“Sleep 把 Recall@3 从 X 提升到了 Y”。
 
 ---
 

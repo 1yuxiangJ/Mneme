@@ -132,7 +132,7 @@ async def remember(
         f"  confidence: {confidence}\n"
         f"  stability: {stability}\n"
         f"  salience: {salience}\n"
-        "First check for near-duplicates via search_archival, then insert."
+        "First check for near-duplicates via find_archival_duplicates, then insert."
     )
     return await _enqueue_awake_write(
         cmd,

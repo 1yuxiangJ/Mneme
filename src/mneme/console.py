@@ -19,6 +19,7 @@ from mneme.memory.job_inspect import snapshot as collect_job_snapshot
 from mneme.memory.jobs import enqueue_awake_write
 from mneme.memory.worker import start_memory_write_worker, stop_memory_write_worker
 from mneme.sleep.agent import run_sleep_cycle
+from mneme.sleep.staging import ensure_archival_id_sequence
 
 BULK_MEMORY_SEED_PATH = Path(__file__).parents[2] / "data" / "bulk_memory_seed_100.jsonl"
 VALID_STABILITY = {"temporary", "stage", "long_term"}
@@ -40,7 +41,7 @@ def build_remember_command(item: dict[str, Any]) -> str:
         f"  confidence: {item['confidence']}\n"
         f"  stability: {item['stability']}\n"
         f"  salience: {item['salience']}\n"
-        "First check for near-duplicates via search_archival, then insert."
+        "First check for near-duplicates via find_archival_duplicates, then insert."
     )
 
 
@@ -124,6 +125,8 @@ async def clear_all_memory_data() -> dict[str, Any]:
             "archival_facts_staging",
         ):
             await session.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+
+        await ensure_archival_id_sequence(session)
 
         await session.execute(text(
             """

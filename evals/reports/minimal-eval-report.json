@@ -1,0 +1,631 @@
+{
+  "generated_at": "2026-07-14T13:47:43.285070+00:00",
+  "database": "mneme_eval",
+  "dataset": {
+    "name": "mneme-minimal-eval-v1",
+    "description": "Synthetic single-user benchmark for Remember, Recall, Promote, and Demote.",
+    "fact_count": 10,
+    "query_count": 5
+  },
+  "runtime": {
+    "llm_model": "deepseek-v4-flash",
+    "embedding_model": "text-embedding-v3",
+    "wall_time_seconds": 165.1267584579764
+  },
+  "metrics": {
+    "no_memory": {
+      "recall_at_3": 0.0,
+      "mrr": 0.0
+    },
+    "remember": {
+      "correct": 10,
+      "total": 10,
+      "accuracy": 1.0,
+      "details": [
+        {
+          "fact_key": "communication_preference",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "occupation",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "sql_skill",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "evening_habit",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "astronomy_hobby",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "food_dislike",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "travel_preference",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "old_low_signal",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "recent_low_signal",
+          "expected_store": true,
+          "stored": true,
+          "duplicate_source_present": true,
+          "passed": true
+        },
+        {
+          "fact_key": "communication_duplicate",
+          "expected_store": false,
+          "stored": false,
+          "duplicate_source_present": true,
+          "passed": true
+        }
+      ]
+    },
+    "retrieval_before_sleep": {
+      "hits": 5,
+      "total": 5,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "details": [
+        {
+          "query_key": "communication_query",
+          "relevant_fact_key": "communication_preference",
+          "rank": 1,
+          "top3": [
+            "communication_preference",
+            "occupation",
+            "sql_skill"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "occupation_query",
+          "relevant_fact_key": "occupation",
+          "rank": 1,
+          "top3": [
+            "occupation",
+            "evening_habit",
+            "sql_skill"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "sql_query",
+          "relevant_fact_key": "sql_skill",
+          "rank": 1,
+          "top3": [
+            "sql_skill",
+            "communication_preference",
+            "occupation"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "evening_query",
+          "relevant_fact_key": "evening_habit",
+          "rank": 1,
+          "top3": [
+            "evening_habit",
+            "astronomy_hobby",
+            "travel_preference"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "relaxation_query",
+          "relevant_fact_key": "astronomy_hobby",
+          "rank": 1,
+          "top3": [
+            "astronomy_hobby",
+            "sql_skill",
+            "evening_habit"
+          ],
+          "hit_at_3": true
+        }
+      ]
+    },
+    "agent_recall": {
+      "passed": 5,
+      "total": 5,
+      "success_rate": 1.0,
+      "details": [
+        {
+          "query_key": "communication_query",
+          "status": "ok",
+          "matched_terms": [
+            "concise",
+            "concrete",
+            "examples"
+          ],
+          "required_matches": 2,
+          "passed": true,
+          "response": "Here are the results.\n\n---\n\n## Core Block Context\nAll core blocks (background, preferences, habits, skills, lessons_learned) are currently **empty** — no structured profile has been promoted yet. The Sleep agent will handle that over time.\n\n## Archival Memory Results\n\n| # | Fact | Confidence |\n|---|------|------------|\n| 1 | **User prefers concise, concrete technical explanations with examples.** | Explicitly stated (3/3) |\n| 2 | User works as a **museum exhibition planner**. | Explicitly stated (3/3) |\n| 3 | User is comfortable analyzing data with **SQL**. | Explicitly stated (3/3) |\n\n### Key takeaway for \"technical concept explanations\"\n\nThe strongest signal is **fact #1**: the user likes explanations that are **concise**, **concrete**, and **example-driven**. Given their background as a **museum exhibition planner**, analogies rooted in physical space, curation, or visitor experience could be effective bridges when explaining abstract topics. The user is also **SQL-literate**, so data terminology won't need a soft intro — you can assume basic data/query fluency."
+        },
+        {
+          "query_key": "occupation_query",
+          "status": "ok",
+          "matched_terms": [
+            "museum",
+            "exhibition"
+          ],
+          "required_matches": 2,
+          "passed": true,
+          "response": "Here's what I found about the user's work:\n\n---\n\n### 🧠 Archival Memory (3 results)\n\n| # | Fact | Confidence | Salience |\n|---|------|------------|----------|\n| 1 | **User works as a museum exhibition planner.** | ✅ Explicitly stated | Medium |\n| 2 | User plans the next day before going to bed. | ✅ Explicitly stated | Medium |\n| 3 | User is comfortable analyzing data with SQL. | ✅ Explicitly stated | Medium |\n\n### 📋 Core Blocks\n\nAll five core blocks (background, habits, preferences, skills, lessons_learned) are currently empty — the Sleep agent hasn't promoted any facts into the structured profile yet.\n\n---\n\n**Summary:** You work as a **museum exhibition planner**, with some data analysis skills (SQL comfort). There are also planning habits (pre-planning the next day before bed). The core profile hasn't been built out yet, so the most detailed picture is in archival memory."
+        },
+        {
+          "query_key": "sql_query",
+          "status": "ok",
+          "matched_terms": [
+            "sql"
+          ],
+          "required_matches": 1,
+          "passed": true,
+          "response": "Here's a summary of what I found:\n\n## Core Block Context\nAll core blocks (background, preferences, habits, skills, lessons_learned) are currently **empty** — no structured profile has been promoted yet.\n\n## Archival Memory Results\n\n| # | Fact | Relevance |\n|---|------|-----------|\n| 1️⃣ | **User is comfortable analyzing data with SQL.** *(confidence: 3 — explicitly stated, long_term, medium salience)* | ✅ Direct match — `distance: 0.38` |\n| 2️⃣ | User prefers concise, concrete technical explanations with examples. | Related (communication preference, not query skill) |\n| 3️⃣ | User works as a museum exhibition planner. | Background context |\n\n### Key Finding\nYou have one recorded database query skill: **SQL data analysis**. The memory indicates you're comfortable analyzing data with SQL, tagged under both `skill` and `data`. No other query languages (e.g., NoSQL, GraphQL, or specific SQL dialects) are currently stored.\n\nWould you like me to expand on this, or store any additional database-related skills you'd like remembered?"
+        },
+        {
+          "query_key": "evening_query",
+          "status": "ok",
+          "matched_terms": [
+            "next day",
+            "bed"
+          ],
+          "required_matches": 2,
+          "passed": true,
+          "response": "## Recall Results\n\n### Core Profile\nAll core blocks (background, habits, preferences, skills, lessons_learned) are currently **empty** — no structured profile has been built yet.\n\n### Archival Memory Hits (bedtime-related)\n\n| # | Fact | Confidence | Distance |\n|---|------|------------|----------|\n| 🥇 | **Plans the next day before going to bed.** | Explicit (3) | 0.19 — strong match |\n| 🥈 | **Watches astronomy documentaries to relax.** | Explicit (3) | 0.39 — moderate match (wind-down activity) |\n\n### Summary\nThe user has two bedtime-related patterns stored:\n1. **Planning ahead** — they organize the next day's plan before sleeping.\n2. **Relaxation via astronomy documentaries** — this may serve as part of their wind-down routine.\n\nThe third archival hit (train vs. flight travel preference) is unrelated to bedtime.\n\n**Notable gap:** No entry for actual sleep time, wind-down duration, reading habits, or other pre-sleep rituals. If you'd like to share more details about your bedtime routine, I can store them for future recall."
+        },
+        {
+          "query_key": "relaxation_query",
+          "status": "ok",
+          "matched_terms": [
+            "astronomy",
+            "documentaries"
+          ],
+          "required_matches": 2,
+          "passed": true,
+          "response": "## Memory Recall Results\n\n### Core Profile Context\nYour core blocks are currently empty — no structured profile has been built yet. Archival memory has more to go on.\n\n### Archival Hits (ranked by relevance)\n\n| # | Match | Distance | Details |\n|---|-------|----------|---------|\n| 1 | 🎥 **You regularly watch astronomy documentaries to relax.** | 0.17 | Confirmed fact (confidence 3), long-term pattern, tagged `hobby`, `entertainment` |\n| 2 | You're comfortable analyzing data with SQL. | 0.37 | (skill, not relaxation-related) |\n| 3 | You plan the next day before bed. | 0.39 | (habit, not relaxation-related) |\n\n### Summary\nThe clearest match is that **astronomy documentaries** are your go-to for winding down. It's stored as a stable, confirmed preference. No other relaxation-related watch habits were found — if you have other go-to genres or shows (nature docs, sci-fi series, comfort movies, etc.), feel free to share and I can remember those too."
+        }
+      ]
+    },
+    "retrieval_after_sleep": {
+      "hits": 5,
+      "total": 5,
+      "recall_at_3": 1.0,
+      "mrr": 1.0,
+      "details": [
+        {
+          "query_key": "communication_query",
+          "relevant_fact_key": "communication_preference",
+          "rank": 1,
+          "top3": [
+            "communication_preference",
+            "occupation",
+            "sql_skill"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "occupation_query",
+          "relevant_fact_key": "occupation",
+          "rank": 1,
+          "top3": [
+            "occupation",
+            "evening_habit",
+            "sql_skill"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "sql_query",
+          "relevant_fact_key": "sql_skill",
+          "rank": 1,
+          "top3": [
+            "sql_skill",
+            "communication_preference",
+            "occupation"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "evening_query",
+          "relevant_fact_key": "evening_habit",
+          "rank": 1,
+          "top3": [
+            "evening_habit",
+            "astronomy_hobby",
+            "travel_preference"
+          ],
+          "hit_at_3": true
+        },
+        {
+          "query_key": "relaxation_query",
+          "relevant_fact_key": "astronomy_hobby",
+          "rank": 1,
+          "top3": [
+            "astronomy_hobby",
+            "sql_skill",
+            "evening_habit"
+          ],
+          "hit_at_3": true
+        }
+      ]
+    },
+    "sleep_lifecycle": {
+      "passed": 4,
+      "total": 4,
+      "accuracy": 1.0,
+      "promotion": {
+        "target_block": "preferences",
+        "matched_terms": [
+          "concise",
+          "concrete"
+        ],
+        "expected_terms": [
+          "concise",
+          "concrete"
+        ],
+        "promote_op_present": true,
+        "passed": true,
+        "core_value": "User prefers concise, concrete technical explanations with examples."
+      },
+      "demote_should_delete": [
+        {
+          "fact_key": "old_low_signal",
+          "deleted": true,
+          "passed": true
+        }
+      ],
+      "demote_should_retain": [
+        {
+          "fact_key": "recent_low_signal",
+          "retained": true,
+          "passed": true
+        }
+      ],
+      "duplicate_control": [
+        {
+          "source_key": "communication_preference",
+          "duplicate_key": "communication_duplicate",
+          "active_count": 1,
+          "passed": true
+        }
+      ]
+    },
+    "overall": {
+      "passed": 29,
+      "total": 29,
+      "accuracy": 1.0
+    }
+  },
+  "promotion_signal": {
+    "fact_key": "communication_preference",
+    "before": 2,
+    "after": 5,
+    "calls": 3
+  },
+  "sleep_result": {
+    "status": "ok",
+    "abort_reason": null,
+    "plan": [
+      "promote",
+      "demote",
+      "core_refresh",
+      "reflect"
+    ],
+    "consolidate_count": 0,
+    "promote_candidate_count": 1,
+    "promote_count": 1,
+    "demote_count": 1,
+    "contradictions_count": 0,
+    "core_refresh_checked": true,
+    "core_refresh_evidence_mode": "all_active",
+    "core_refresh_skip_reason": null,
+    "core_refresh_candidate_count": 5,
+    "core_refresh_count": 0,
+    "reflection_preview": "User is a museum exhibition planner who regularly uses SQL for data analysis and prefers concise, concrete technical explanations with examples. They plan the next day before going to bed and unwind b"
+  },
+  "remember_jobs": [
+    {
+      "fact_key": "communication_preference",
+      "job_id": 1,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "occupation",
+      "job_id": 2,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "sql_skill",
+      "job_id": 3,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "evening_habit",
+      "job_id": 4,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "astronomy_hobby",
+      "job_id": 5,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "food_dislike",
+      "job_id": 6,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "travel_preference",
+      "job_id": 7,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "old_low_signal",
+      "job_id": 8,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "recent_low_signal",
+      "job_id": 9,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    },
+    {
+      "fact_key": "communication_duplicate",
+      "job_id": 10,
+      "status": "succeeded",
+      "attempt_count": 1,
+      "last_error": null
+    }
+  ],
+  "core_after_sleep": {
+    "background": "",
+    "habits": "",
+    "lessons_learned": "",
+    "preferences": "User prefers concise, concrete technical explanations with examples.",
+    "skills": ""
+  },
+  "archival_after_sleep": [
+    {
+      "id": 1,
+      "content": "User prefers concise, concrete technical explanations with examples.",
+      "is_deleted": false,
+      "use_count": 5,
+      "last_used_at": "2026-07-14 13:47:03.534130+00:00",
+      "created_at": "2026-07-14 13:45:05.616535+00:00"
+    },
+    {
+      "id": 2,
+      "content": "User works as a museum exhibition planner.",
+      "is_deleted": false,
+      "use_count": 3,
+      "last_used_at": "2026-07-14 13:46:45.228531+00:00",
+      "created_at": "2026-07-14 13:45:13.367337+00:00"
+    },
+    {
+      "id": 3,
+      "content": "User is comfortable analyzing data with SQL.",
+      "is_deleted": false,
+      "use_count": 4,
+      "last_used_at": "2026-07-14 13:46:57.607330+00:00",
+      "created_at": "2026-07-14 13:45:21.302153+00:00"
+    },
+    {
+      "id": 4,
+      "content": "User plans the next day before going to bed.",
+      "is_deleted": false,
+      "use_count": 3,
+      "last_used_at": "2026-07-14 13:46:57.607330+00:00",
+      "created_at": "2026-07-14 13:45:28.962871+00:00"
+    },
+    {
+      "id": 5,
+      "content": "User regularly watches astronomy documentaries to relax.",
+      "is_deleted": false,
+      "use_count": 2,
+      "last_used_at": "2026-07-14 13:46:57.607330+00:00",
+      "created_at": "2026-07-14 13:45:36.255718+00:00"
+    },
+    {
+      "id": 6,
+      "content": "User strongly dislikes cilantro in food.",
+      "is_deleted": false,
+      "use_count": 0,
+      "last_used_at": null,
+      "created_at": "2026-07-14 13:45:45.277360+00:00"
+    },
+    {
+      "id": 7,
+      "content": "User prefers train travel over short flights.",
+      "is_deleted": false,
+      "use_count": 1,
+      "last_used_at": "2026-07-14 13:46:51.374558+00:00",
+      "created_at": "2026-07-14 13:45:57.038414+00:00"
+    },
+    {
+      "id": 8,
+      "content": "User tentatively wants to try pottery someday.",
+      "is_deleted": true,
+      "use_count": 0,
+      "last_used_at": null,
+      "created_at": "2026-03-16 13:47:03.537144+00:00"
+    },
+    {
+      "id": 9,
+      "content": "User may try watercolor painting someday.",
+      "is_deleted": false,
+      "use_count": 0,
+      "last_used_at": null,
+      "created_at": "2026-07-14 13:46:15.864946+00:00"
+    }
+  ],
+  "ops_log": [
+    {
+      "id": 1,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "1",
+      "reason": "User explicitly stated their preference for concise, concrete technical explanations with examples — a stable communication-style preference with high future usefulness.",
+      "ts": "2026-07-14 13:45:05.616535+00:00"
+    },
+    {
+      "id": 2,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "2",
+      "reason": "User explicitly stated their career as a museum exhibition planner. This is a stable identity fact that will inform future collaboration on design, project management, and research tasks.",
+      "ts": "2026-07-14 13:45:13.367337+00:00"
+    },
+    {
+      "id": 3,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "3",
+      "reason": "User explicitly stated they are comfortable with SQL for data analysis — a stable, cross-project skill worth remembering.",
+      "ts": "2026-07-14 13:45:21.302153+00:00"
+    },
+    {
+      "id": 4,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "4",
+      "reason": "User explicitly stated a stable evening planning habit — likely to affect task handoff context and future scheduling.",
+      "ts": "2026-07-14 13:45:28.962871+00:00"
+    },
+    {
+      "id": 5,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "5",
+      "reason": "User explicitly provided this as a stable relaxation hobby pattern.",
+      "ts": "2026-07-14 13:45:36.255718+00:00"
+    },
+    {
+      "id": 6,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "6",
+      "reason": "User explicitly stated a strong dislike of cilantro, a stable food preference with medium future usefulness (e.g., restaurant recommendations, recipe suggestions).",
+      "ts": "2026-07-14 13:45:45.277360+00:00"
+    },
+    {
+      "id": 7,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "7",
+      "reason": "User explicitly stated a stable travel preference for trains over short flights — directly stated by the user with high confidence.",
+      "ts": "2026-07-14 13:45:57.038414+00:00"
+    },
+    {
+      "id": 8,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "8",
+      "reason": "User explicitly asked to remember this tentative interest in pottery.",
+      "ts": "2026-07-14 13:46:04.370431+00:00"
+    },
+    {
+      "id": 9,
+      "op_type": "remember",
+      "actor": "awake_agent",
+      "target_kind": "archival",
+      "target_id": "9",
+      "reason": "Tentative interest expressed by user; low confidence since it's speculative, stage stability since it may shift, low salience as it's a passive reference.",
+      "ts": "2026-07-14 13:46:15.864946+00:00"
+    },
+    {
+      "id": 10,
+      "op_type": "sleep_promote",
+      "actor": "sleep_agent",
+      "target_kind": "core",
+      "target_id": "preferences",
+      "reason": "Promoted from archival id=1: This fact describes a stable, high-salience preference for communication style that is general and durable, making it appropriate for the preferences core block.",
+      "ts": "2026-07-14 13:47:43.246229+00:00"
+    },
+    {
+      "id": 11,
+      "op_type": "sleep_demote",
+      "actor": "sleep_agent",
+      "target_kind": "archival",
+      "target_id": "8",
+      "reason": "Low confidence (1), low stability (stage), low salience (1), never used, and over 90 days old. Tentative desire unlikely to be relevant.",
+      "ts": "2026-07-14 13:47:43.246229+00:00"
+    },
+    {
+      "id": 12,
+      "op_type": "sleep_core_refresh",
+      "actor": "sleep_agent",
+      "target_kind": "core",
+      "target_id": "__checkpoint__",
+      "reason": "Core refresh check completed; mode=all_active; active_facts=8; evidence_facts=9; changed_ops=11; refreshed_blocks=0",
+      "ts": "2026-07-14 13:47:43.246229+00:00"
+    },
+    {
+      "id": 13,
+      "op_type": "sleep_reflect",
+      "actor": "sleep_agent",
+      "target_kind": null,
+      "target_id": null,
+      "reason": "periodic reflection snapshot",
+      "ts": "2026-07-14 13:47:43.246229+00:00"
+    }
+  ]
+}

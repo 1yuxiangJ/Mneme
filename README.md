@@ -98,7 +98,7 @@ service 时需要在项目目录运行。
 
 ## 当前状态
 
-🟢 **Day 29(2026-07-05):Durable write queue 完成**
+🟢 **Day 35(2026-07-14):最小自动化 Eval 完成**
 
 - ✅ Day 01:目录骨架 + 总方案 PLAN.md(17 节)+ DECISIONS.md(Q1-Q14)
 - ✅ Day 02:fetch 4 份 references,read-only primary 模式确立
@@ -112,6 +112,8 @@ service 时需要在项目目录运行。
 - ✅ Day 09:demo seed facts 增加 promotion-ready usage signal,确保 Sleep promote 有候选
 - ✅ Day 10:修复 `archival_facts_id_seq` 缺失导致 Sleep snapshot 失败的问题
 - ✅ Day 29:`remember` / `forget` 改为 PostgreSQL durable queue + worker,避免 accepted 后内存任务丢失
+- ✅ Day 31-34:staging 字段级合并、增量 Core Refresh、Swap 文档和 Demote 时间语义完成
+- ✅ Day 35:隔离评测库跑真实 Remember / Recall / Sleep,29/29 项检查通过;修复查重污染 `use_count` 和 sequence ownership
 - ⏸️ 剩余人工项:按 `docs/FINAL_VERIFICATION.md` 录 demo
 
 完整施工记录在 `docs/construction-log/`。
@@ -129,10 +131,12 @@ mneme/
 ├── scripts/seed_demo_memory.py   # 显式 --yes 后写入 demo-tagged memory
 ├── scripts/run_demo_cycle.py      # seed 可选 + Sleep + inspect 的一键 demo
 ├── scripts/run_sleep_once.py     # 手动触发一次 Sleep cycle
+├── scripts/run_eval.py           # 独立 mneme_eval 库上的最小自动化评测
 ├── scripts/inspect_memory.py     # 只读打印 memory / ops_log 快照
 ├── scripts/inspect_memory_jobs.py # 只读打印 durable write jobs
 ├── scripts/drain_memory_jobs.py   # 手动处理 pending durable write jobs
-├── src/mneme/                   # 2103 行 Python · 17 模块
+├── evals/                       # 最小评测数据集 + Markdown/JSON 实测报告
+├── src/mneme/                   # Python 源码
 │   ├── __init__.py / __main__.py / main.py / config.py
 │   ├── mcp_server.py            # MCP 4 tools + activity 标记
 │   ├── db/{schema.sql, models.py}
@@ -195,6 +199,8 @@ pytest + pytest-asyncio                # 测试
 > 基于 Letta sleep-time compute paper 实现的 Claude Code 跨项目长期记忆服务,Awake/Sleep 双 agent + read-only primary 架构。
 
 完整 6 个版本(中英 × 短中长)见 `docs/RESUME.md`。
+
+自动化评测完整报告见 `evals/reports/minimal-eval-report.md`。
 
 ---
 

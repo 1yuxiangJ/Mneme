@@ -163,6 +163,9 @@ async def node_plan(state: SleepState) -> SleepState:
     )
     decision = await _llm_json(rendered)
     phases = decision.get("phases", ["reflect"])
+    if summary.stale_archival_count > 0 and "demote" not in phases:
+        insert_at = phases.index("reflect") if "reflect" in phases else len(phases)
+        phases.insert(insert_at, "demote")
     if "core_refresh" not in phases:
         if "reflect" in phases:
             phases.insert(phases.index("reflect"), "core_refresh")

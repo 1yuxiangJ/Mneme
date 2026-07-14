@@ -1,0 +1,146 @@
+{
+  "name": "mneme-minimal-eval-v1",
+  "description": "Synthetic single-user benchmark for Remember, Recall, Promote, and Demote.",
+  "facts": [
+    {
+      "key": "communication_preference",
+      "content": "User prefers concise, concrete technical explanations with examples.",
+      "tags": ["preference", "communication"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 3,
+      "expected_store": true
+    },
+    {
+      "key": "occupation",
+      "content": "User works as a museum exhibition planner.",
+      "tags": ["background", "career"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "sql_skill",
+      "content": "User is comfortable analyzing data with SQL.",
+      "tags": ["skill", "data"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "evening_habit",
+      "content": "User plans the next day before going to bed.",
+      "tags": ["habit", "planning"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "astronomy_hobby",
+      "content": "User regularly watches astronomy documentaries to relax.",
+      "tags": ["hobby", "entertainment"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "food_dislike",
+      "content": "User strongly dislikes cilantro in food.",
+      "tags": ["preference", "food"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "travel_preference",
+      "content": "User prefers train travel over short flights.",
+      "tags": ["preference", "travel"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 2,
+      "expected_store": true
+    },
+    {
+      "key": "old_low_signal",
+      "content": "User tentatively wants to try pottery someday.",
+      "tags": ["interest", "tentative"],
+      "confidence": 1,
+      "stability": "stage",
+      "salience": 1,
+      "expected_store": true,
+      "backdate_days": 120
+    },
+    {
+      "key": "recent_low_signal",
+      "content": "User may try watercolor painting someday.",
+      "tags": ["interest", "tentative"],
+      "confidence": 1,
+      "stability": "stage",
+      "salience": 1,
+      "expected_store": true
+    },
+    {
+      "key": "communication_duplicate",
+      "content": "User prefers concise and concrete technical explanations with examples.",
+      "tags": ["preference", "communication"],
+      "confidence": 3,
+      "stability": "long_term",
+      "salience": 3,
+      "expected_store": false,
+      "duplicate_of": "communication_preference"
+    }
+  ],
+  "queries": [
+    {
+      "key": "communication_query",
+      "query": "How should technical concepts be explained to the user?",
+      "relevant_fact_key": "communication_preference",
+      "expected_terms": ["concise", "concrete", "examples"],
+      "minimum_term_matches": 2
+    },
+    {
+      "key": "occupation_query",
+      "query": "What kind of work does the user do?",
+      "relevant_fact_key": "occupation",
+      "expected_terms": ["museum", "exhibition"],
+      "minimum_term_matches": 2
+    },
+    {
+      "key": "sql_query",
+      "query": "Which database query skill does the user have?",
+      "relevant_fact_key": "sql_skill",
+      "expected_terms": ["sql"],
+      "minimum_term_matches": 1
+    },
+    {
+      "key": "evening_query",
+      "query": "What does the user usually do before going to bed?",
+      "relevant_fact_key": "evening_habit",
+      "expected_terms": ["next day", "bed"],
+      "minimum_term_matches": 2
+    },
+    {
+      "key": "relaxation_query",
+      "query": "What does the user regularly watch to relax?",
+      "relevant_fact_key": "astronomy_hobby",
+      "expected_terms": ["astronomy", "documentaries"],
+      "minimum_term_matches": 2
+    }
+  ],
+  "promotion_probe": {
+    "fact_key": "communication_preference",
+    "query": "concise concrete technical explanations with examples",
+    "minimum_use_count": 5,
+    "target_core_block": "preferences",
+    "expected_core_terms": ["concise", "concrete"]
+  },
+  "demote_expectations": {
+    "should_delete": ["old_low_signal"],
+    "should_retain": ["recent_low_signal"]
+  }
+}

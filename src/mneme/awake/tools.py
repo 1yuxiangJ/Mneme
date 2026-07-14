@@ -59,25 +59,45 @@ async def search_archival(query: str, limit: int = 5) -> dict[str, Any]:
     Returns matching facts with cosine distance.
     Side-effect: increments use_count for returned facts.
     """
+    results = await _search_archival(query, limit, track_usage=True)
+    return {"results": results}
+
+
+@tool
+async def find_archival_duplicates(query: str, limit: int = 5) -> dict[str, Any]:
+    """Search for near-duplicate archival facts without counting a user recall.
+
+    Use only during Remember deduplication. Unlike search_archival, this does
+    not increment use_count or last_used_at, because an internal write-time
+    duplicate check is not evidence that the memory helped answer the user.
+    """
+    results = await _search_archival(query, limit, track_usage=False)
+    return {"results": results}
+
+
+async def _search_archival(
+    query: str,
+    limit: int,
+    *,
+    track_usage: bool,
+) -> list[dict[str, Any]]:
     session_maker = session_factory()
     async with session_maker() as session:
-        results = await semantic_search_archival(session, query, limit=limit)
-        if results:
-            await mark_archival_used(session, [r.id for r in results])
-    return {
-        "results": [
-            {
-                "id": r.id,
-                "content": r.content,
-                "tags": r.tags,
-                "confidence": r.confidence,
-                "stability": r.stability,
-                "salience": r.salience,
-                "distance": r.distance,
-            }
-            for r in results
-        ]
-    }
+        matches = await semantic_search_archival(session, query, limit=limit)
+        if track_usage and matches:
+            await mark_archival_used(session, [result.id for result in matches])
+    return [
+        {
+            "id": result.id,
+            "content": result.content,
+            "tags": result.tags,
+            "confidence": result.confidence,
+            "stability": result.stability,
+            "salience": result.salience,
+            "distance": result.distance,
+        }
+        for result in matches
+    ]
 
 
 @tool
@@ -171,6 +191,7 @@ async def forget_archival(fact_id: int, reason: str) -> dict[str, Any]:
 # Tool list for LangGraph create_react_agent.
 AWAKE_TOOLS = [
     load_core,
+    find_archival_duplicates,
     search_archival,
     insert_archival_fact,
     get_overview,

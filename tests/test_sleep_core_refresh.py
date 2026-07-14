@@ -38,6 +38,23 @@ async def test_plan_always_includes_core_refresh(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_plan_includes_demote_when_stale_candidates_exist(monkeypatch):
+    async def fake_summary(_session: object, _last_cycle: object):
+        return tools.StateSummary([], 10, 0, 1, False)
+
+    async def fake_llm(_prompt: str) -> dict[str, Any]:
+        return {"phases": ["promote", "reflect"], "reason": "omitted demote"}
+
+    monkeypatch.setattr(agent, "get_sessionmaker", _sessionmaker)
+    monkeypatch.setattr(agent.tools, "summarize_state", fake_summary)
+    monkeypatch.setattr(agent, "_llm_json", fake_llm)
+
+    result = await agent.node_plan({"deadline_ts": time.monotonic() + 10})
+
+    assert result["plan"] == ["promote", "demote", "core_refresh", "reflect"]
+
+
+@pytest.mark.asyncio
 async def test_core_refresh_runs_even_when_plan_omits_it(monkeypatch):
     context = {
         "refresh_required": True,

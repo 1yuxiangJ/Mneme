@@ -636,3 +636,17 @@ async def test_cleanup_staging_drops_tables(integration_session):
 
     assert core_staging_exists is None
     assert archival_staging_exists is None
+
+
+@pytest.mark.asyncio
+async def test_sequence_survives_cleanup_after_atomic_swap(integration_session):
+    """Dropping old-main staging after swap must not delete the live ID sequence."""
+    await _insert_archival(integration_session, "Fact before swap.")
+    await integration_session.commit()
+    snapshot_ts = await snapshot_to_staging(integration_session)
+    await atomic_swap(integration_session, snapshot_ts)
+
+    await cleanup_staging(integration_session)
+    inserted_id = await _insert_archival(integration_session, "Fact after cleanup.")
+
+    assert inserted_id >= 2

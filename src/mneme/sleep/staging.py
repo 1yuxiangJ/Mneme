@@ -49,7 +49,7 @@ async def _set_archival_id_default(session: AsyncSession, table_name: str) -> No
     ))
 
 
-async def _ensure_archival_id_sequence(session: AsyncSession) -> None:
+async def ensure_archival_id_sequence(session: AsyncSession) -> None:
     """Ensure archival_facts.id has a stable sequence across table swaps.
 
     `CREATE TABLE ... LIKE ... INCLUDING ALL` plus rename-based swaps can leave
@@ -70,6 +70,9 @@ async def _ensure_archival_id_sequence(session: AsyncSession) -> None:
         """
     ))
     await _set_archival_id_default(session, "archival_facts")
+    await session.execute(text(
+        f"ALTER SEQUENCE {_ARCHIVAL_ID_SEQUENCE} OWNED BY archival_facts.id"
+    ))
 
 
 async def snapshot_to_staging(session: AsyncSession) -> datetime:
@@ -81,7 +84,7 @@ async def snapshot_to_staging(session: AsyncSession) -> datetime:
     """
     snapshot_ts = datetime.now(UTC)
 
-    await _ensure_archival_id_sequence(session)
+    await ensure_archival_id_sequence(session)
 
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
@@ -170,6 +173,13 @@ async def atomic_swap(
         await session.execute(text(f"ALTER TABLE {staging} RENAME TO {tbl}"))
         await session.execute(text(f"ALTER TABLE {tmp} RENAME TO {staging}"))
 
+    # Sequence ownership follows the old main table object when it is renamed
+    # to staging. Rebind it to the new live main before staging can be dropped.
+    await _set_archival_id_default(session, "archival_facts")
+    await session.execute(text(
+        f"ALTER SEQUENCE {_ARCHIVAL_ID_SEQUENCE} OWNED BY archival_facts.id"
+    ))
+
     # Step e: truncate the now-staging (which was the old main).
     for tbl in _STAGED_TABLES:
         staging = f"{tbl}_staging"
@@ -185,4 +195,5 @@ async def cleanup_staging(session: AsyncSession) -> None:
     """Drop staging tables (after successful swap or if cycle aborted)."""
     for tbl in _STAGED_TABLES:
         await session.execute(text(f"DROP TABLE IF EXISTS {tbl}_staging CASCADE"))
+    await ensure_archival_id_sequence(session)
     await session.commit()

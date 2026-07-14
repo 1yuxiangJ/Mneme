@@ -148,7 +148,7 @@ ReAct = Reason + Act(2022 年 Google 论文)。LLM 反复跑:
 用户:remember "我喜欢 4 空格"
 
 Reason 1:  LLM 想:先查重复
-Act 1:     search_archival(query="我喜欢 4 空格")
+Act 1:     find_archival_duplicates(query="我喜欢 4 空格")
 Observe 1: [] (没找到)
 
 Reason 2:  LLM 想:没重复,可以插入
@@ -1421,7 +1421,7 @@ DEMOTE 候选:   ((last_used_at IS NOT NULL AND last_used_at < now() - 90 days)
 REFLECT 时:    created_at DESC LIMIT 10 = "最近 fact 摘要"
 ```
 
-**`use_count` 怎么变**:`semantic_search_archival` 命中后,Memory Store 自动 `UPDATE ... SET use_count = use_count + 1, last_used_at = now()`。**读操作有 side-effect**——这是个故意的设计,违反"读不改写"原则,但这是 Letta paper 推荐的"用 access pattern 信号驱动 consolidation"。
+**`use_count` 怎么变**:只有用户侧 Recall 使用的 `search_archival` 命中后,才执行 `UPDATE ... SET use_count = use_count + 1, last_used_at = now()`。Remember 内部查重改用 `find_archival_duplicates`,复用同一向量检索但不更新访问统计。**Recall 读操作有 side-effect**——这是个故意的设计,违反"读不改写"原则,但这是 Letta paper 推荐的"用 access pattern 信号驱动 consolidation"。
 
 **为什么不能写成 `last_used_at IS NULL OR last_used_at < cutoff`**:`NULL` 的含义是“从未被 Recall”,并不等于“已经 90 天没用”。如果直接把所有 `NULL` 当 stale,刚 Remember 的低信号 Fact 会在下一轮 Sleep 立刻进入 Demote。现在从未使用的 Fact 改看 `created_at`,因此也有完整的 90 天观察期。Plan 阶段的 stale 计数和 Demote 阶段的候选查询复用同一条 SQL 条件,避免两边口径漂移。
 
@@ -1492,7 +1492,7 @@ CREATE INDEX idx_archival_active
 
 #### Q1:`use_count` 在**读操作**里被更新——违反 CQS(命令查询分离),你 OK 吗?
 
-背景:`semantic_search_archival` 表面是个 SELECT,但内部跑完会 `UPDATE ... SET use_count = use_count + 1, last_used_at = now()`——**读操作有 side-effect**。
+背景:用户侧 `search_archival` 表面是个 SELECT,但命中后会 `UPDATE ... SET use_count = use_count + 1, last_used_at = now()`——**Recall 读操作有 side-effect**。Remember 查重不算用户真正使用记忆,所以走无统计副作用的 `find_archival_duplicates`。
 
 **用户回答**:可以接受,没必要分开;但不知道怎么辩护。
 
@@ -2359,18 +2359,18 @@ LangGraph create_react_agent (LLM B: DeepSeek)
     │
     │ ┌─ ReAct Step 1 ────────────────────────────────────────┐
     │ │ [Reason] LLM B 看 SYSTEM_PROMPT + command + 5 tools │
-    │ │ → 决定调 search_archival(query=content)             │
-    │ │ [Act]  search_archival 工具被 LangGraph 调用         │
+    │ │ → 决定调 find_archival_duplicates(query=content)    │
+    │ │ [Act]  find_archival_duplicates 被 LangGraph 调用    │
     │ └─────────────────────────────────────────────────────┘
     │     │
     │     ▼
-    │ awake/tools.py: search_archival(query, limit=5)
+    │ awake/tools.py: find_archival_duplicates(query, limit=5)
     │     │ - session_factory() 拿 async session
     │     │ - semantic_search_archival(session, query, limit)
     │     │   ├─ embed_text(query) ──→ 阿里通义 API call #1
     │     │   ├─ SELECT ... embedding <=> vec ORDER BY distance LIMIT 5
     │     │   └─ 返回 [] (假设没找到重复)
-    │     │ - mark_archival_used([]) (空 list 无操作)
+    │     │ - 不调用 mark_archival_used(查重不算 Recall)
     │     └─ 返回 {"results": []}
     │     │
     │     ▼
@@ -2465,7 +2465,7 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 ### 简化版(去重路径)
 
-如果 `search_archival` 找到 distance < 0.1 的重复:
+如果 `find_archival_duplicates` 找到 distance < 0.1 的重复:
 1. Step 1:search → 找到 dup
 2. Step 2:LLM B 决定不 insert,直接 final answer "已存在重复"
 3. **只 2 个 LLM call + 1 个 embedding call + 1 个 DB SELECT**
@@ -2478,7 +2478,7 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 | | content | query |
 |---|---|---|
-| **remember 场景** | 要**记住的 fact** 本身("我喜欢 4 空格"),存进 `archival_facts.content` + 算 embedding | 查重用的搜索词,**拿 content 当 query**(`search_archival(query=content)`)→ **二者同一文本** |
+| **remember 场景** | 要**记住的 fact** 本身("我喜欢 4 空格"),存进 `archival_facts.content` + 算 embedding | 查重用的搜索词,**拿 content 当 query**(`find_archival_duplicates(query=content)`)→ **二者同一文本** |
 | **recall 场景** | 不存在(recall 只读不写) | 用户的**检索问题**("我的代码风格偏好是啥")|
 
 一句话:**content = 要记的内容,query = 要搜的问题**。remember 里二者恰好同文本,recall 里只有 query 没有 content。
@@ -2487,7 +2487,7 @@ DeepSeek-chat 定价(2026 估算):input ~$0.14/M tok, output ~$0.28/M tok
 
 前面"调用次数"说 2 次 embedding 算"不同文本"**不准确**:remember 里查重(query)和入库(content)是**同一段文本**,各算一次 = **浪费一次 embedding API**。
 
-→ **当前实现**:Day 14 已加进程内 embedding cache。`search_archival(query=content)` 刚算过的同文本向量,`insert_archival(content)` 会直接复用,不再重复调用 embedding API。
+→ **当前实现**:Day 14 已加进程内 embedding cache。`find_archival_duplicates(query=content)` 刚算过的同文本向量,`insert_archival(content)` 会直接复用,不再重复调用 embedding API。
 > 面试话术:"remember 链路里查重和插入对同一文本会用同一份 embedding。MVP 用的是进程内 LRU cache,已经把最明显的一次重复 API 调用省掉;后续如果多进程部署,再考虑 Redis/provider 级 cache。"
 
 #### 3. 【已完成】写异步、读同步
@@ -3710,7 +3710,9 @@ WHERE a.embedding <=> b.embedding < 0.15;
 > 2. **Sleep cycle 返回 result dict**——每个 phase 的 action 数量、reflection 段落 preview 都在 `run_sleep_cycle()` 返回值,scheduler 落 log。
 > 3. **`last_writer` 字段自检**——core_blocks 每行有 last_writer,如果出现 `WHERE last_writer != 'sleep_agent'` 立即报警(invariant 被绕过)。
 >
-> **没做的**:metrics dashboard、LLM eval harness、prompt regression test。这是 §7 列出的 known trade-off,生产化要补。"
+> **已做的**:Day 35 加了最小 Eval Harness,真实跑 durable Remember / Awake Recall / Sleep,输出 JSON + Markdown 报告;当前 10 条输入、5 个 Query、29 项确定性检查全部通过。
+>
+> **没做的**:metrics dashboard、大样本多轮方差评测、独立 LLM Judge。这些是生产化才需要补的范围。"
 
 **加分点**:
 - 同时说有 + 没有(显示自知边界)
@@ -3720,7 +3722,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 - "用 Prometheus + Grafana" → ❌ 没做就别撒谎
 - "充分监控" → ❌ 模糊话术
 
-**追问 fallback**:"那 LLM prompt 改了你怎么知道好坏?" → 诚实"现在靠肉眼,§7 ⑧ 列了 eval harness 是 known TODO"
+**追问 fallback**:"那 LLM prompt 改了你怎么知道好坏?" → "跑 `scripts/run_eval.py`:固定合成集经过真实 Agent 链路,比较 Remember、Recall@3/MRR、Agent Recall 和 Sleep 生命周期;当前最小集 29/29。它是回归基线,不是生产统计结论。"
 
 ---
 
@@ -3993,6 +3995,7 @@ WHERE a.embedding <=> b.embedding < 0.15;
 | 13 | **consolidate 升 HNSW 聚类** | O(N²) 朴素聚类,>5000 行超 budget | HNSW top-K 近邻剪枝 / DBSCAN 聚类 | §7 ⑩ |
 | 14 | **Awake ReAct 卡死防护** | Day 14 已做:`recursion_limit=8` + LLM `timeout=20,max_retries=1` + 整体 `wait_for=45s` + 写类异步 | 后续可加 p99 latency 监控和 step_count 接近 limit 告警 | §5.2 讨论(Awake ReAct 风险) |
 | 15 | **Core Refresh 证据加载** | Day 32 已做:每轮检查 + 成功 checkpoint;`<=200` 全量 fact,`>200` 每 Core Top 8 + 增量 facts + 高信号 Top 10;ops 读 checkpoint 之后而非固定最新 20 条 | 后续当单个 Core 变成多段长文时,可再拆成 claim-level retrieval,避免整段 embedding 稀释多主题 | §6.1 / Day 32 |
+| 16 | **自动化 Eval Harness** | Day 35 已做:隔离 `mneme_eval`,真实 Remember/Awake/Recall/Sleep,JSON+Markdown 报告;最小集 29/29 | 后续扩成多 profile、多轮重复和独立 Judge,报告均值/方差 | Architecture §8.1 / Day 35 |
 
 **面试一句话**:"这项目我维护了一个优化 backlog,十几项,从 embedding 复用、写异步读同步,到 swap 字段级合并、大数据量改 MVCC 快照——已经落地的会记录验证结果,暂缓的会记录改法和触发条件,而不是把所有生产化能力一次堆进 MVP。"
 
